@@ -1,0 +1,60 @@
+@import "tailwindcss";
+
+:root {
+  --bg: #0b0b10;
+  --surface: #141625;
+  --surface-strong: #1c2134;
+  --border: rgba(255, 255, 255, 0.08);
+  --text: #eef1f6;
+  --muted: #96a1b8;
+  --accent: #4f7cff;
+  --accent-2: #2dd4bf;
+  --danger: #f25f5c;
+}
+
+@theme inline {
+  --font-sans: var(--font-sora);
+  --font-mono: var(--font-space-mono);
+}
+
+@layer base {
+  body {
+    min-height: 100%;
+    background:
+      radial-gradient(1200px 700px at 10% -10%, rgba(79, 124, 255, 0.25), transparent 55%),
+      radial-gradient(900px 600px at 90% 0%, rgba(45, 212, 191, 0.2), transparent 50%),
+      var(--bg);
+    color: var(--text);
+    font-family: var(--font-sans), system-ui, -apple-system, sans-serif;
+  }
+
+  a {
+    color: inherit;
+  }
+}
+
+@layer utilities {
+  .bg-app {
+    background: var(--bg);
+  }
+
+  .bg-surface {
+    background: var(--surface);
+  }
+
+  .bg-surface-strong {
+    background: var(--surface-strong);
+  }
+
+  .text-muted {
+    color: var(--muted);
+  }
+
+  .text-accent {
+    color: var(--accent);
+  }
+
+  .border-subtle {
+    border-color: var(--border);
+  }
+}

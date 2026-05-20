@@ -1,0 +1,80 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+model Tenant {
+  id        String   @id @default(cuid())
+  name      String
+  slug      String   @unique
+  createdAt DateTime @default(now())
+
+  users    User[]
+  products Product[]
+  sales    Sale[]
+}
+
+model User {
+  id           String   @id @default(cuid())
+  tenantId     String
+  name         String
+  email        String
+  passwordHash String
+  role         String   @default("owner")
+  createdAt    DateTime @default(now())
+
+  tenant Tenant @relation(fields: [tenantId], references: [id])
+  sales  Sale[]
+
+  @@unique([tenantId, email])
+}
+
+model Product {
+  id          String   @id @default(cuid())
+  tenantId    String
+  name        String
+  priceCents  Int
+  category    String?
+  description String?
+  createdAt   DateTime @default(now())
+
+  tenant    Tenant     @relation(fields: [tenantId], references: [id])
+  saleItems SaleItem[]
+
+  @@index([tenantId])
+}
+
+model Sale {
+  id            String   @id @default(cuid())
+  tenantId      String
+  userId        String
+  subtotalCents Int
+  totalCents    Int
+  customerEmail String?
+  createdAt     DateTime @default(now())
+
+  tenant Tenant @relation(fields: [tenantId], references: [id])
+  user   User   @relation(fields: [userId], references: [id])
+  items  SaleItem[]
+
+  @@index([tenantId])
+}
+
+model SaleItem {
+  id            String @id @default(cuid())
+  saleId        String
+  productId     String
+  quantity      Int
+  unitPriceCents Int
+  lineTotalCents Int
+
+  sale    Sale    @relation(fields: [saleId], references: [id])
+  product Product @relation(fields: [productId], references: [id])
+
+  @@index([saleId])
+  @@index([productId])
+}
