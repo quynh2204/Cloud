@@ -9,12 +9,13 @@ const errorMessages: Record<string, string> = {
   InvalidCredentials: "Login failed. Check store code and credentials.",
 };
 
-export default function LoginPage({
+export default async function LoginPage({
   searchParams,
 }: {
-  searchParams?: { error?: string };
+  searchParams: Promise<{ error?: string }>;
 }) {
-  const error = searchParams?.error;
+  const params = await searchParams;
+  const error = params?.error;
 
   return (
     <div className="w-full max-w-lg rounded-2xl border border-[color:var(--border)] bg-[color:var(--surface)] p-8 shadow-[0_20px_60px_rgba(0,0,0,0.35)]">

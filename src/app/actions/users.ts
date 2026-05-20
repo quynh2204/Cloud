@@ -3,7 +3,7 @@
 import bcrypt from "bcryptjs";
 import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
-import { prisma } from "@/lib/prisma";
+import prisma from "@/lib/db";
 import { requireSession } from "@/lib/auth";
 
 export async function createUserAction(formData: FormData) {

@@ -3,8 +3,9 @@
 import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
 import { requireSession } from "@/lib/auth";
-import { prisma } from "@/lib/prisma";
-import { sendReceiptEmail } from "@/lib/email";
+import prisma from "@/lib/db";
+import { salesService } from "@/services/salesService";
+import { emailService } from "@/services/emailService";
 
 type CartItem = {
   productId: string;
@@ -21,10 +22,20 @@ function parseItems(raw: string) {
     }));
 }
 
+function isValidEmail(email: string): boolean {
+  const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+  return emailRegex.test(email);
+}
+
 export async function createSaleAction(formData: FormData) {
   const session = await requireSession();
   const rawItems = formData.get("items");
   const customerEmail = String(formData.get("customerEmail") || "").trim();
+  const customerName = String(formData.get("customerName") || "").trim();
+  const customerPhone = String(formData.get("customerPhone") || "").trim();
+  const paymentMethod = String(formData.get("paymentMethod") || "cash");
+  const amountReceivedCents = formData.get("amountReceivedCents");
+  const notes = String(formData.get("notes") || "").trim();
 
   if (typeof rawItems !== "string" || rawItems.length === 0) {
     redirect("/pos?error=EmptyCart");
@@ -40,86 +51,50 @@ export async function createSaleAction(formData: FormData) {
     redirect("/pos?error=EmptyCart");
   }
 
-  const productIds = items.map((item) => item.productId);
-  const products = await prisma.product.findMany({
-    where: {
-      tenantId: session.tenantId,
-      id: { in: productIds },
-    },
-  });
+  // Use sales service to create sale
+  const saleItems = items.map((item) => ({
+    productId: item.productId,
+    quantity: item.quantity,
+  }));
 
-  const productMap = new Map(products.map((product) => [product.id, product]));
-
-  const lines: Array<{
-    productId: string;
-    name: string;
-    quantity: number;
-    unitPriceCents: number;
-    lineTotalCents: number;
-  }> = [];
-  for (const item of items) {
-    const product = productMap.get(item.productId);
-    if (!product) {
-      redirect("/pos?error=MissingProduct");
-    }
-    const unitPriceCents = product.priceCents;
-    const lineTotalCents = unitPriceCents * item.quantity;
-    lines.push({
-      productId: product.id,
-      name: product.name,
-      quantity: item.quantity,
-      unitPriceCents,
-      lineTotalCents,
-    });
-  }
-
-  const subtotalCents = lines.reduce((sum, line) => sum + line.lineTotalCents, 0);
-  const totalCents = subtotalCents;
-
-  const sale = await prisma.sale.create({
-    data: {
-      tenantId: session.tenantId,
-      userId: session.userId,
-      subtotalCents,
-      totalCents,
-      customerEmail: customerEmail || null,
-      items: {
-        create: lines.map((line) => ({
-          productId: line.productId,
-          quantity: line.quantity,
-          unitPriceCents: line.unitPriceCents,
-          lineTotalCents: line.lineTotalCents,
-        })),
-      },
-    },
-    include: { items: { include: { product: true } } },
+  const sale = await salesService.createSale({
+    userId: session.userId,
+    tenantId: session.tenantId,
+    items: saleItems,
+    customerEmail: customerEmail || undefined,
+    customerName: customerName || undefined,
+    customerPhone: customerPhone || undefined,
+    paymentMethod,
+    amountReceivedCents: amountReceivedCents ? parseInt(String(amountReceivedCents)) : undefined,
+    notes: notes || undefined,
   });
 
   let emailStatus = "skipped";
   if (customerEmail) {
-    try {
-      await sendReceiptEmail({
-        to: customerEmail,
-        tenantName: session.tenantName,
-        saleId: sale.id,
-        saleDate: sale.createdAt,
-        lines: sale.items.map((item) => ({
-          name: item.product.name,
-          quantity: item.quantity,
-          unitPriceCents: item.unitPriceCents,
-          lineTotalCents: item.lineTotalCents,
-        })),
-        subtotalCents: sale.subtotalCents,
-        totalCents: sale.totalCents,
-      });
-      emailStatus = "sent";
-    } catch {
-      emailStatus = "failed";
+    if (!isValidEmail(customerEmail)) {
+      emailStatus = "invalid";
+    } else {
+      try {
+        await emailService.sendReceipt({
+          userId: session.userId,
+          tenantId: session.tenantId,
+          saleId: sale.id,
+          customerEmail,
+        });
+        emailStatus = "sent";
+      } catch (error) {
+        console.error("Email send error:", error);
+        emailStatus = "failed";
+      }
     }
   }
 
   revalidatePath("/transactions");
-  redirect(`/transactions/${sale.id}?email=${emailStatus}`);
+  // Never catch redirect() - it must throw to work
+  if (emailStatus) {
+    redirect(`/transactions/${sale.id}?email=${emailStatus}`);
+  }
+  redirect(`/transactions/${sale.id}`);
 }
 
 export async function sendReceiptAction(formData: FormData) {
@@ -131,37 +106,29 @@ export async function sendReceiptAction(formData: FormData) {
     redirect(`/transactions/${saleId}?email=missing`);
   }
 
-  const sale = await prisma.sale.findFirst({
-    where: { id: saleId, tenantId: session.tenantId },
-    include: { items: { include: { product: true } }, tenant: true },
-  });
-
-  if (!sale) {
-    redirect("/transactions?error=NotFound");
+  if (!isValidEmail(email)) {
+    redirect(`/transactions/${saleId}?email=invalid`);
   }
 
+  // Update sale email
   await prisma.sale.update({
-    where: { id: sale.id },
+    where: { id: saleId },
     data: { customerEmail: email },
   });
 
+  let emailStatus = "failed";
   try {
-    await sendReceiptEmail({
-      to: email,
-      tenantName: sale.tenant.name,
-      saleId: sale.id,
-      saleDate: sale.createdAt,
-      lines: sale.items.map((item) => ({
-        name: item.product.name,
-        quantity: item.quantity,
-        unitPriceCents: item.unitPriceCents,
-        lineTotalCents: item.lineTotalCents,
-      })),
-      subtotalCents: sale.subtotalCents,
-      totalCents: sale.totalCents,
+    await emailService.sendReceipt({
+      userId: session.userId,
+      tenantId: session.tenantId,
+      saleId,
+      customerEmail: email,
     });
-    redirect(`/transactions/${sale.id}?email=sent`);
-  } catch {
-    redirect(`/transactions/${sale.id}?email=failed`);
+    emailStatus = "sent";
+  } catch (error) {
+    console.error("Email send error:", error);
+    emailStatus = "failed";
   }
+  // Never catch redirect - it must throw
+  redirect(`/transactions/${saleId}?email=${emailStatus}`);
 }

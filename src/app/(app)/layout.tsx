@@ -11,9 +11,9 @@ export default async function AppLayout({
   const session = await requireSession();
 
   return (
-    <div className="flex min-h-screen">
+    <div className="flex h-screen">
       <Sidebar tenantName={session.tenantName} userName={session.userName} />
-      <div className="flex flex-1 flex-col">
+      <div className="flex flex-1 flex-col overflow-hidden">
         <header className="flex items-center justify-between border-b border-[color:var(--border)] bg-[color:var(--surface)] px-8 py-4">
           <div>
             <p className="text-sm text-white/50">Tenant</p>
@@ -27,7 +27,7 @@ export default async function AppLayout({
             </Button>
           </form>
         </header>
-        <main className="flex-1 px-8 py-8">{children}</main>
+        <main className="flex-1 overflow-y-auto px-8 py-8">{children}</main>
       </div>
     </div>
   );

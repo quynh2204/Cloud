@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { prisma } from "@/lib/prisma";
+import prisma from "@/lib/db";
 import { requireSession } from "@/lib/auth";
 import { formatMoney } from "@/lib/format";
 import { sendReceiptAction } from "@/app/actions/sales";
@@ -7,21 +7,24 @@ import { Button } from "@/components/ui/Button";
 import { Input } from "@/components/ui/Input";
 
 const emailStatus: Record<string, string> = {
-  sent: "Receipt emailed successfully.",
-  failed: "Email failed. Check SMTP settings and try again.",
-  missing: "Please provide an email address.",
+  sent: "✓ Receipt emailed successfully.",
+  failed: "✗ Email failed. Check SMTP settings and try again.",
+  missing: "✗ Please provide an email address.",
+  invalid: "✗ Invalid email address. Please check and try again.",
+  skipped: "No email was sent for this transaction.",
 };
 
 export default async function TransactionDetailPage({
   params,
   searchParams,
 }: {
-  params: { saleId: string };
-  searchParams?: { email?: string };
+  params: Promise<{ saleId: string }>;
+  searchParams: Promise<{ email?: string }>;
 }) {
+  const { saleId } = await params;
   const session = await requireSession();
   const sale = await prisma.sale.findFirst({
-    where: { id: params.saleId, tenantId: session.tenantId },
+    where: { id: saleId, tenantId: session.tenantId },
     include: { items: { include: { product: true } }, tenant: true },
   });
 
@@ -36,8 +39,9 @@ export default async function TransactionDetailPage({
     );
   }
 
-  const emailMessage = searchParams?.email
-    ? emailStatus[searchParams.email]
+  const searchParamsData = await searchParams;
+  const emailMessage = searchParamsData?.email
+    ? emailStatus[searchParamsData.email]
     : undefined;
 
   return (

@@ -1,7 +1,7 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
-import { prisma } from "@/lib/prisma";
+import prisma from "@/lib/db";
 import { requireSession } from "@/lib/auth";
 import { toCents } from "@/lib/format";
 
@@ -11,6 +11,7 @@ export async function createProductAction(formData: FormData) {
   const priceInput = String(formData.get("price") || "").trim();
   const category = String(formData.get("category") || "").trim();
   const description = String(formData.get("description") || "").trim();
+  const imageUrl = String(formData.get("imageUrl") || "").trim();
 
   if (!name || !priceInput) {
     return;
@@ -25,6 +26,7 @@ export async function createProductAction(formData: FormData) {
       priceCents,
       category: category || null,
       description: description || null,
+      imageUrl: imageUrl || null,
     },
   });
 
@@ -38,6 +40,7 @@ export async function updateProductAction(formData: FormData) {
   const priceInput = String(formData.get("price") || "").trim();
   const category = String(formData.get("category") || "").trim();
   const description = String(formData.get("description") || "").trim();
+  const imageUrl = String(formData.get("imageUrl") || "").trim();
 
   if (!id || !name || !priceInput) {
     return;
@@ -52,6 +55,7 @@ export async function updateProductAction(formData: FormData) {
       priceCents,
       category: category || null,
       description: description || null,
+      imageUrl: imageUrl || null,
     },
   });
 

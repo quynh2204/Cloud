@@ -2,7 +2,7 @@
 
 import bcrypt from "bcryptjs";
 import { redirect } from "next/navigation";
-import { prisma } from "@/lib/prisma";
+import prisma from "@/lib/db";
 import { clearSession, createSession } from "@/lib/auth";
 
 function normalizeSlug(input: string) {
@@ -24,6 +24,12 @@ export async function registerAction(formData: FormData) {
     redirect("/register?error=MissingFields");
   }
 
+  // Validate email format
+  const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+  if (!emailRegex.test(email)) {
+    redirect("/register?error=InvalidEmail");
+  }
+
   if (password.length < 8) {
     redirect("/register?error=WeakPassword");
   }
@@ -41,24 +47,44 @@ export async function registerAction(formData: FormData) {
     redirect("/register?error=TenantExists");
   }
 
-  const passwordHash = await bcrypt.hash(password, 10);
-
-  const tenant = await prisma.tenant.create({
-    data: {
-      name: tenantName,
-      slug: tenantSlug,
-      users: {
-        create: {
-          name: userName,
-          email,
-          passwordHash,
-          role: "owner",
-        },
-      },
-    },
-    include: { users: true },
+  // Check if email already exists globally (unique constraint)
+  const existingUser = await prisma.user.findUnique({
+    where: { email },
   });
 
+  if (existingUser) {
+    redirect("/register?error=EmailExists");
+  }
+
+  const passwordHash = await bcrypt.hash(password, 10);
+
+  let tenant;
+  try {
+    tenant = await prisma.tenant.create({
+      data: {
+        name: tenantName,
+        slug: tenantSlug,
+        users: {
+          create: {
+            name: userName,
+            email,
+            passwordHash,
+            role: "owner",
+          },
+        },
+      },
+      include: { users: true },
+    });
+  } catch (error) {
+    const msg = error instanceof Error ? error.message : "Registration failed";
+    if (msg.includes("Unique constraint failed")) {
+      redirect("/register?error=EmailExists");
+    }
+    console.error("Register error:", msg);
+    redirect("/register?error=RegisterFailed");
+  }
+
+  // Move redirect outside try-catch (must throw to work properly)
   const user = tenant.users[0];
   await createSession({
     userId: user.id,
@@ -95,14 +121,11 @@ export async function loginAction(formData: FormData) {
 
   const user = await prisma.user.findUnique({
     where: {
-      tenantId_email: {
-        tenantId: tenant.id,
-        email,
-      },
+      email,
     },
   });
 
-  if (!user) {
+  if (!user || user.tenantId !== tenant.id) {
     redirect("/login?error=InvalidCredentials");
   }
 

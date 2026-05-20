@@ -10,6 +10,7 @@ const navItems = [
   { href: "/team", label: "Team" },
   { href: "/pos", label: "PoS" },
   { href: "/transactions", label: "Transactions" },
+  { href: "/settings", label: "Settings" },
 ];
 
 type SidebarProps = {

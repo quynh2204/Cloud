@@ -1,4 +1,4 @@
-import { prisma } from "@/lib/prisma";
+import prisma from "@/lib/db";
 import { requireSession } from "@/lib/auth";
 import { createUserAction, deleteUserAction } from "@/app/actions/users";
 import { Button } from "@/components/ui/Button";
@@ -16,7 +16,7 @@ const errorMessages: Record<string, string> = {
 export default async function TeamPage({
   searchParams,
 }: {
-  searchParams?: { error?: string };
+  searchParams: Promise<{ error?: string }>;
 }) {
   const session = await requireSession();
   const isOwner = session.role === "owner";
@@ -25,8 +25,9 @@ export default async function TeamPage({
     orderBy: { createdAt: "desc" },
   });
 
-  const error = searchParams?.error
-    ? errorMessages[searchParams.error]
+  const params = await searchParams;
+  const error = params?.error
+    ? errorMessages[params.error]
     : undefined;
 
   return (

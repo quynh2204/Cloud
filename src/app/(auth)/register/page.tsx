@@ -7,15 +7,19 @@ const errorMessages: Record<string, string> = {
   MissingFields: "Please fill in all fields.",
   InvalidTenant: "Store code is not valid.",
   TenantExists: "Store code already exists.",
+  InvalidEmail: "Email format is invalid.",
+  EmailExists: "This email is already registered.",
   WeakPassword: "Password must be at least 8 characters.",
+  RegisterFailed: "Registration failed. Please try again.",
 };
 
-export default function RegisterPage({
+export default async function RegisterPage({
   searchParams,
 }: {
-  searchParams?: { error?: string };
+  searchParams: Promise<{ error?: string }>;
 }) {
-  const error = searchParams?.error;
+  const params = await searchParams;
+  const error = params?.error;
 
   return (
     <div className="w-full max-w-lg rounded-2xl border border-[color:var(--border)] bg-[color:var(--surface)] p-8 shadow-[0_20px_60px_rgba(0,0,0,0.35)]">

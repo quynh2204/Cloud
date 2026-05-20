@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { prisma } from "@/lib/prisma";
+import prisma from "@/lib/db";
 import { requireSession } from "@/lib/auth";
 import { formatMoney } from "@/lib/format";
 import { Badge } from "@/components/ui/Badge";

@@ -1,6 +1,6 @@
-import { prisma } from "@/lib/prisma";
+import prisma from "@/lib/db";
 import { requireSession } from "@/lib/auth";
-import { PosClient } from "@/app/(app)/pos/pos-client";
+import { PosClient, type PosProduct } from "@/app/(app)/pos/pos-client";
 
 const errorMessages: Record<string, string> = {
   EmptyCart: "Add at least one item before checkout.",
@@ -11,7 +11,7 @@ const errorMessages: Record<string, string> = {
 export default async function PosPage({
   searchParams,
 }: {
-  searchParams?: { error?: string };
+  searchParams: Promise<{ error?: string }>;
 }) {
   const session = await requireSession();
   const products = await prisma.product.findMany({
@@ -19,8 +19,19 @@ export default async function PosPage({
     orderBy: { createdAt: "desc" },
   });
 
-  const error = searchParams?.error
-    ? errorMessages[searchParams.error]
+  // Map Prisma products to PosProduct type
+  const posProducts: PosProduct[] = products.map((p) => ({
+    id: p.id,
+    name: p.name,
+    priceCents: p.priceCents,
+    category: p.category,
+    description: p.description,
+    imageUrl: p.imageUrl,
+  }));
+
+  const params = await searchParams;
+  const error = params?.error
+    ? errorMessages[params.error]
     : undefined;
 
   return (
@@ -32,7 +43,7 @@ export default async function PosPage({
           Add scarves to the cart and send receipts instantly.
         </p>
       </div>
-      <PosClient products={products} error={error} />
+      <PosClient products={posProducts} error={error} />
     </div>
   );
 }

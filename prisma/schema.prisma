@@ -11,18 +11,43 @@ model Tenant {
   id        String   @id @default(cuid())
   name      String
   slug      String   @unique
+  
+  // Public info
+  description    String?
+  phone          String?
+  website        String?
+  logo           String? // URL to logo
+  
+  // Security
+  twoFactorEnabled Boolean  @default(false)
+  passwordChangedAt DateTime?
+  
   createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
-  users    User[]
-  products Product[]
-  sales    Sale[]
+  users        User[]
+  products     Product[]
+  sales        Sale[]
+  emailConfig  EmailConfig?
+}
+
+model EmailConfig {
+  id           String   @id @default(cuid())
+  tenantId     String   @unique
+  gmailEmail   String
+  refreshToken String   // Encrypted OAuth refresh token
+  isConnected  Boolean  @default(true)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
 }
 
 model User {
   id           String   @id @default(cuid())
   tenantId     String
   name         String
-  email        String
+  email        String   @unique // Email must be globally unique across all shops
   passwordHash String
   role         String   @default("owner")
   createdAt    DateTime @default(now())
@@ -30,7 +55,7 @@ model User {
   tenant Tenant @relation(fields: [tenantId], references: [id])
   sales  Sale[]
 
-  @@unique([tenantId, email])
+  @@index([tenantId])
 }
 
 model Product {
@@ -40,6 +65,7 @@ model Product {
   priceCents  Int
   category    String?
   description String?
+  imageUrl    String?  // Product image URL
   createdAt   DateTime @default(now())
 
   tenant    Tenant     @relation(fields: [tenantId], references: [id])
@@ -49,13 +75,18 @@ model Product {
 }
 
 model Sale {
-  id            String   @id @default(cuid())
-  tenantId      String
-  userId        String
-  subtotalCents Int
-  totalCents    Int
-  customerEmail String?
-  createdAt     DateTime @default(now())
+  id                  String   @id @default(cuid())
+  tenantId            String
+  userId              String
+  subtotalCents       Int
+  totalCents          Int
+  customerEmail       String?
+  customerName        String?
+  customerPhone       String?
+  paymentMethod       String   @default("cash") // cash, card, transfer
+  amountReceivedCents Int?     // For cash: amount customer paid
+  notes               String?  // Transaction notes
+  createdAt           DateTime @default(now())
 
   tenant Tenant @relation(fields: [tenantId], references: [id])
   user   User   @relation(fields: [userId], references: [id])
