@@ -13,7 +13,14 @@ npm install
 
 ### 2. Configure Environment
 ```bash
+# On Linux/macOS
 cp .env.example .env
+
+# On Windows (Command Prompt)
+copy .env.example .env
+
+# On Windows (PowerShell)
+Copy-Item .env.example .env
 ```
 
 Edit `.env` with your settings:

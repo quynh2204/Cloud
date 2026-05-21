@@ -1,7 +1,7 @@
 import { cn } from "@/lib/cn";
 import type { InputHTMLAttributes } from "react";
 
-export function Input({ className, ...props }: InputHTMLAttributes<HTMLInputElement>) {
+export function Input({ className, value, ...props }: InputHTMLAttributes<HTMLInputElement>) {
   return (
     <input
       className={cn(
@@ -9,6 +9,7 @@ export function Input({ className, ...props }: InputHTMLAttributes<HTMLInputElem
         "placeholder:text-white/40 focus:border-[color:var(--accent)] focus:outline-none",
         className
       )}
+      value={value ?? ""}
       {...props}
     />
   );

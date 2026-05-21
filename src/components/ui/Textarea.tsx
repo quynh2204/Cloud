@@ -3,6 +3,7 @@ import type { TextareaHTMLAttributes } from "react";
 
 export function Textarea({
   className,
+  value,
   ...props
 }: TextareaHTMLAttributes<HTMLTextAreaElement>) {
   return (
@@ -12,6 +13,7 @@ export function Textarea({
         "placeholder:text-white/40 focus:border-[color:var(--accent)] focus:outline-none",
         className
       )}
+      value={value ?? ""}
       {...props}
     />
   );

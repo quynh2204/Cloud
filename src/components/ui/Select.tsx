@@ -4,6 +4,7 @@ import type { SelectHTMLAttributes } from "react";
 export function Select({
   className,
   children,
+  value,
   ...props
 }: SelectHTMLAttributes<HTMLSelectElement>) {
   return (
@@ -13,6 +14,7 @@ export function Select({
         "focus:border-[color:var(--accent)] focus:outline-none",
         className
       )}
+      value={value ?? ""}
       {...props}
     >
       {children}
