@@ -16,17 +16,26 @@ const navItems = [
 type SidebarProps = {
   tenantName: string;
   userName: string;
+  tenantLogo?: string | null;
 };
 
-export function Sidebar({ tenantName, userName }: SidebarProps) {
+export function Sidebar({ tenantName, userName, tenantLogo }: SidebarProps) {
   const pathname = usePathname();
 
   return (
     <aside className="flex h-full w-64 flex-col border-r border-[color:var(--border)] bg-[color:var(--surface)]">
       <div className="flex items-center gap-3 px-6 py-6">
-        <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-[color:var(--accent)] text-lg font-semibold">
-          S
-        </div>
+        {tenantLogo ? (
+          <img
+            src={tenantLogo}
+            alt={tenantName}
+            className="h-10 w-10 rounded-xl object-cover"
+          />
+        ) : (
+          <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-[color:var(--accent)] text-lg font-semibold">
+            {tenantName.slice(0, 1).toUpperCase()}
+          </div>
+        )}
         <div>
           <p className="text-sm text-white/60">Scarf PoS</p>
           <p className="text-lg font-semibold text-white">{tenantName}</p>

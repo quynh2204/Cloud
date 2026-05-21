@@ -3,15 +3,17 @@ import { requireSession } from "@/lib/auth";
 import { formatMoney } from "@/lib/format";
 import {
   createProductAction,
-  deleteProductAction,
   updateProductAction,
 } from "@/app/actions/products";
 import { Button } from "@/components/ui/Button";
 import { Input } from "@/components/ui/Input";
 import { Textarea } from "@/components/ui/Textarea";
+import { DeleteProductForm } from "@/components/products/DeleteProductForm";
+import { getCurrentUserAccess } from "@/lib/access";
 
 export default async function ProductsPage() {
   const session = await requireSession();
+  const access = await getCurrentUserAccess(session);
   const products = await prisma.product.findMany({
     where: { tenantId: session.tenantId },
     orderBy: { createdAt: "desc" },
@@ -29,48 +31,68 @@ export default async function ProductsPage() {
 
       <div className="rounded-2xl border border-[color:var(--border)] bg-[color:var(--surface)] p-6">
         <h2 className="text-lg font-semibold text-white">Add product</h2>
-        <form action={createProductAction} className="mt-4 grid gap-4">
-          <div className="grid gap-4 md:grid-cols-2">
-            <div>
-              <label className="text-xs uppercase tracking-wide text-white/50">
-                Product name
-              </label>
-              <Input name="name" placeholder="Silk scarf" required />
+        {access.canManageProducts ? (
+          <form action={createProductAction} className="mt-4 grid gap-4">
+            <div className="grid gap-4 md:grid-cols-2">
+              <div>
+                <label className="text-xs uppercase tracking-wide text-white/50">
+                  Product name
+                </label>
+                <Input name="name" placeholder="Silk scarf" required />
+              </div>
+              <div>
+                <label className="text-xs uppercase tracking-wide text-white/50">
+                  Price (VND)
+                </label>
+                <Input
+                  name="price"
+                  type="number"
+                  placeholder="250000"
+                  required
+                />
+              </div>
+              {access.isOwner && (
+                <div>
+                  <label className="text-xs uppercase tracking-wide text-white/50">
+                    Cost (VND)
+                  </label>
+                  <Input name="cost" type="number" placeholder="180000" />
+                </div>
+              )}
+              <div>
+                <label className="text-xs uppercase tracking-wide text-white/50">
+                  Category
+                </label>
+                <Input name="category" placeholder="Premium" />
+              </div>
+              <div>
+                <label className="text-xs uppercase tracking-wide text-white/50">
+                  Description
+                </label>
+                <Input name="description" placeholder="Handmade silk" />
+              </div>
+              <div>
+                <label className="text-xs uppercase tracking-wide text-white/50">
+                  Image URL
+                </label>
+                <Input name="imageUrl" placeholder="https://..." />
+              </div>
+              <div>
+                <label className="text-xs uppercase tracking-wide text-white/50">
+                  Stock quantity
+                </label>
+                <Input name="stockQuantity" type="number" min="0" placeholder="0" required />
+              </div>
             </div>
-            <div>
-              <label className="text-xs uppercase tracking-wide text-white/50">
-                Price (VND)
-              </label>
-              <Input
-                name="price"
-                type="number"
-                placeholder="250000"
-                required
-              />
-            </div>
-            <div>
-              <label className="text-xs uppercase tracking-wide text-white/50">
-                Category
-              </label>
-              <Input name="category" placeholder="Premium" />
-            </div>
-            <div>
-              <label className="text-xs uppercase tracking-wide text-white/50">
-                Description
-              </label>
-              <Input name="description" placeholder="Handmade silk" />
-            </div>
-            <div>
-              <label className="text-xs uppercase tracking-wide text-white/50">
-                Image URL
-              </label>
-              <Input name="imageUrl" placeholder="https://..." />
-            </div>
-          </div>
-          <Button type="submit" className="w-fit">
-            Save product
-          </Button>
-        </form>
+            <Button type="submit" className="w-fit">
+              Save product
+            </Button>
+          </form>
+        ) : (
+          <p className="mt-3 text-sm text-white/50">
+            You can view products only. Ask the owner to grant product add/update access.
+          </p>
+        )}
       </div>
 
       <div className="space-y-4">
@@ -116,13 +138,12 @@ export default async function ProductsPage() {
                 <p className="text-lg font-semibold text-white">
                   {formatMoney(product.priceCents)}
                 </p>
+                <p className="text-sm text-white/60">Stock: {product.stockQuantity}</p>
               </div>
             </div>
 
-            <form
-              action={updateProductAction}
-              className="mt-6 grid gap-4"
-            >
+            {access.canManageProducts ? (
+              <form action={updateProductAction} className="mt-6 grid gap-4">
               <input type="hidden" name="id" value={product.id} />
               <div className="grid gap-4 md:grid-cols-2">
                 <div>
@@ -139,6 +160,31 @@ export default async function ProductsPage() {
                     name="price"
                     type="number"
                     defaultValue={product.priceCents.toString()}
+                    required
+                  />
+                </div>
+                {access.isOwner && (
+                  <div>
+                    <label className="text-xs uppercase tracking-wide text-white/50">
+                      Cost (VND)
+                    </label>
+                    <Input
+                      name="cost"
+                      type="number"
+                      defaultValue={product.costCents.toString()}
+                      placeholder="180000"
+                    />
+                  </div>
+                )}
+                <div>
+                  <label className="text-xs uppercase tracking-wide text-white/50">
+                    Stock quantity
+                  </label>
+                  <Input
+                    name="stockQuantity"
+                    type="number"
+                    min="0"
+                    defaultValue={product.stockQuantity.toString()}
                     required
                   />
                 </div>
@@ -178,12 +224,14 @@ export default async function ProductsPage() {
                 Update
               </Button>
             </form>
-            <form action={deleteProductAction} className="mt-3">
-              <input type="hidden" name="id" value={product.id} />
-              <Button type="submit" variant="danger">
-                Delete product
-              </Button>
-            </form>
+            ) : (
+              <div className="mt-6 rounded-xl border border-[color:var(--border)] bg-[color:var(--surface-strong)] px-4 py-3 text-sm text-white/60">
+                Product editing is disabled for your account.
+              </div>
+            )}
+            {access.isOwner && (
+              <DeleteProductForm productId={product.id} productName={product.name} />
+            )}
           </div>
         ))}
       </div>

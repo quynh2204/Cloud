@@ -12,7 +12,10 @@ export async function GET(request: NextRequest) {
 
   try {
     const sales = await prisma.sale.findMany({
-      where: { tenantId: session.tenantId },
+      where: {
+        tenantId: session.tenantId,
+        status: { notIn: ["VOIDED", "REFUNDED"] },
+      },
       orderBy: { createdAt: "desc" },
       take: limit,
       include: {
@@ -26,6 +29,7 @@ export async function GET(request: NextRequest) {
       id: sale.id,
       customerEmail: sale.customerEmail,
       customerName: sale.customerName,
+      status: sale.status,
       totalCents: sale.totalCents,
       createdAt: sale.createdAt.toISOString(),
       items: sale.items.map((item) => ({

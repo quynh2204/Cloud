@@ -2,6 +2,7 @@ import Link from "next/link";
 import { loginAction } from "@/app/actions/auth";
 import { Button } from "@/components/ui/Button";
 import { Input } from "@/components/ui/Input";
+import { PasswordInput } from "@/components/ui/PasswordInput";
 
 const errorMessages: Record<string, string> = {
   MissingFields: "Please fill in all fields.",
@@ -48,7 +49,7 @@ export default async function LoginPage({
           <label className="text-xs uppercase tracking-wide text-white/50">
             Password
           </label>
-          <Input name="password" type="password" placeholder="********" required />
+          <PasswordInput name="password" placeholder="********" required />
         </div>
         <Button type="submit" className="w-full">
           Sign in

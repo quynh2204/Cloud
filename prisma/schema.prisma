@@ -50,6 +50,7 @@ model User {
   email        String   @unique // Email must be globally unique across all shops
   passwordHash String
   role         String   @default("owner")
+  canManageProducts Boolean @default(false)
   createdAt    DateTime @default(now())
 
   tenant Tenant @relation(fields: [tenantId], references: [id])
@@ -63,6 +64,8 @@ model Product {
   tenantId    String
   name        String
   priceCents  Int
+  costCents   Int      @default(0)
+  stockQuantity Int    @default(0)
   category    String?
   description String?
   imageUrl    String?  // Product image URL
@@ -79,7 +82,15 @@ model Sale {
   tenantId            String
   userId              String
   subtotalCents       Int
+  taxRate             Int      @default(0)
+  taxAmountCents      Int      @default(0)
+  discountCents       Int      @default(0)
   totalCents          Int
+  status              String   @default("COMPLETED")
+  replacedSaleId      String?
+  replacementInvoiceNumber String?
+  replacementTemplateCode  String?
+  replacementSeriesCode    String?
   customerEmail       String?
   customerName        String?
   customerPhone       String?
@@ -91,8 +102,12 @@ model Sale {
   tenant Tenant @relation(fields: [tenantId], references: [id])
   user   User   @relation(fields: [userId], references: [id])
   items  SaleItem[]
+  replacedSale Sale? @relation("SaleReplacements", fields: [replacedSaleId], references: [id])
+  replacements Sale[] @relation("SaleReplacements")
 
   @@index([tenantId])
+  @@index([status])
+  @@index([replacedSaleId])
 }
 
 model SaleItem {

@@ -57,44 +57,31 @@ export async function createSaleAction(formData: FormData) {
     quantity: item.quantity,
   }));
 
-  const sale = await salesService.createSale({
-    userId: session.userId,
-    tenantId: session.tenantId,
-    items: saleItems,
-    customerEmail: customerEmail || undefined,
-    customerName: customerName || undefined,
-    customerPhone: customerPhone || undefined,
-    paymentMethod,
-    amountReceivedCents: amountReceivedCents ? parseInt(String(amountReceivedCents)) : undefined,
-    notes: notes || undefined,
-  });
-
-  let emailStatus = "skipped";
-  if (customerEmail) {
-    if (!isValidEmail(customerEmail)) {
-      emailStatus = "invalid";
-    } else {
-      try {
-        await emailService.sendReceipt({
-          userId: session.userId,
-          tenantId: session.tenantId,
-          saleId: sale.id,
-          customerEmail,
-        });
-        emailStatus = "sent";
-      } catch (error) {
-        console.error("Email send error:", error);
-        emailStatus = "failed";
-      }
+  let sale;
+  try {
+    sale = await salesService.createSale({
+      userId: session.userId,
+      tenantId: session.tenantId,
+      items: saleItems,
+      customerEmail: customerEmail || undefined,
+      customerName: customerName || undefined,
+      customerPhone: customerPhone || undefined,
+      paymentMethod,
+      amountReceivedCents: amountReceivedCents
+        ? parseInt(String(amountReceivedCents), 10)
+        : undefined,
+      notes: notes || undefined,
+    });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "Create sale failed";
+    if (message.includes("Insufficient stock") || message.includes("Stock changed")) {
+      redirect(`/pos?error=${encodeURIComponent(message)}`);
     }
+    redirect("/pos?error=CreateSaleFailed");
   }
-
+  // Do NOT auto-send email. Cashier must press Send Receipt manually.
   revalidatePath("/transactions");
-  // Never catch redirect() - it must throw to work
-  if (emailStatus) {
-    redirect(`/transactions/${sale.id}?email=${emailStatus}`);
-  }
-  redirect(`/transactions/${sale.id}`);
+  redirect(`/transactions/${sale.id}?email=skipped`);
 }
 
 export async function sendReceiptAction(formData: FormData) {
@@ -131,4 +118,59 @@ export async function sendReceiptAction(formData: FormData) {
   }
   // Never catch redirect - it must throw
   redirect(`/transactions/${saleId}?email=${emailStatus}`);
+}
+
+export async function voidSaleAction(formData: FormData) {
+  const session = await requireSession();
+  const saleId = String(formData.get("saleId") || "");
+  const reason = String(formData.get("reason") || "").trim();
+  // Normalize to VOIDED per spec
+  const status = "VOIDED";
+
+  if (!saleId) {
+    redirect("/transactions?error=MissingSale");
+  }
+
+  try {
+    await salesService.voidSale({
+      saleId,
+      tenantId: session.tenantId,
+      status: "VOIDED",
+      reason: reason || undefined,
+    });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "VoidFailed";
+    redirect(`/transactions/${saleId}?error=${encodeURIComponent(message)}`);
+  }
+
+  revalidatePath("/transactions");
+  revalidatePath("/dashboard");
+  revalidatePath("/pos");
+  redirect(`/transactions/${saleId}?success=Voided`);
+}
+
+export async function refundSaleAction(formData: FormData) {
+  const session = await requireSession();
+  const saleId = String(formData.get("saleId") || "");
+  const reason = String(formData.get("reason") || "").trim();
+  if (!saleId) {
+    redirect(`/transactions/${saleId}?error=MissingRefundData`);
+  }
+
+  try {
+    await salesService.refundSale({
+      saleId,
+      tenantId: session.tenantId,
+      userId: session.userId,
+      reason: reason || undefined,
+    });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "RefundFailed";
+    redirect(`/transactions/${saleId}?error=${encodeURIComponent(message)}`);
+  }
+
+  revalidatePath("/transactions");
+  revalidatePath("/dashboard");
+  revalidatePath("/pos");
+  redirect(`/transactions/${saleId}?success=Refunded`);
 }

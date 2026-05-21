@@ -16,6 +16,7 @@ export async function createUserAction(formData: FormData) {
   const email = String(formData.get("email") || "").trim().toLowerCase();
   const password = String(formData.get("password") || "");
   const role = String(formData.get("role") || "staff").trim();
+  const canManageProducts = formData.get("canManageProducts") === "on";
 
   if (!name || !email || !password) {
     redirect("/team?error=MissingFields");
@@ -43,6 +44,7 @@ export async function createUserAction(formData: FormData) {
         email,
         passwordHash,
         role: role === "owner" ? "owner" : "staff",
+        canManageProducts: role === "owner" ? true : canManageProducts,
       },
     });
   } catch (error) {
@@ -53,6 +55,45 @@ export async function createUserAction(formData: FormData) {
     console.error("Create user error:", msg);
     redirect("/team?error=CreateFailed");
   }
+
+  revalidatePath("/team");
+}
+
+export async function updateUserPermissionsAction(formData: FormData) {
+  const session = await requireSession();
+  if (session.role !== "owner") {
+    redirect("/team?error=Forbidden");
+  }
+
+  const userId = String(formData.get("userId") || "");
+  if (!userId) {
+    redirect("/team?error=MissingFields");
+  }
+
+  const user = await prisma.user.findFirst({
+    where: { id: userId, tenantId: session.tenantId },
+    select: { id: true, role: true },
+  });
+
+  if (!user) {
+    redirect("/team?error=CreateFailed");
+  }
+
+  if (user.role === "owner") {
+    await prisma.user.update({
+      where: { id: user.id },
+      data: { canManageProducts: true },
+    });
+    revalidatePath("/team");
+    return;
+  }
+
+  const canManageProducts = formData.get("canManageProducts") === "on";
+
+  await prisma.user.update({
+    where: { id: user.id },
+    data: { canManageProducts },
+  });
 
   revalidatePath("/team");
 }

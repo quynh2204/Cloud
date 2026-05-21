@@ -2,9 +2,12 @@ import Link from "next/link";
 import prisma from "@/lib/db";
 import { requireSession } from "@/lib/auth";
 import { formatMoney } from "@/lib/format";
-import { sendReceiptAction } from "@/app/actions/sales";
+import {
+  sendReceiptAction,
+} from "@/app/actions/sales";
 import { Button } from "@/components/ui/Button";
 import { Input } from "@/components/ui/Input";
+import { ReceiptActions } from "@/components/transactions/ReceiptActions";
 
 const emailStatus: Record<string, string> = {
   sent: "✓ Receipt emailed successfully.",
@@ -19,13 +22,16 @@ export default async function TransactionDetailPage({
   searchParams,
 }: {
   params: Promise<{ saleId: string }>;
-  searchParams: Promise<{ email?: string }>;
+  searchParams: Promise<{ email?: string; error?: string; success?: string }>;
 }) {
   const { saleId } = await params;
   const session = await requireSession();
   const sale = await prisma.sale.findFirst({
     where: { id: saleId, tenantId: session.tenantId },
-    include: { items: { include: { product: true } }, tenant: true },
+    include: {
+      items: { include: { product: true } },
+      tenant: true,
+    },
   });
 
   if (!sale) {
@@ -43,6 +49,8 @@ export default async function TransactionDetailPage({
   const emailMessage = searchParamsData?.email
     ? emailStatus[searchParamsData.email]
     : undefined;
+  const actionSuccess = searchParamsData?.success;
+  const actionError = searchParamsData?.error;
 
   return (
     <div className="space-y-6">
@@ -65,12 +73,32 @@ export default async function TransactionDetailPage({
         </div>
       )}
 
+      {actionSuccess && (
+        <div className="rounded-lg border border-green-500/40 bg-green-500/10 px-4 py-3 text-sm text-green-400">
+          {actionSuccess === "Voided" && "Receipt was voided and stock was restored."}
+          {actionSuccess === "Refunded" && "Refund processed and stock was restored."}
+        </div>
+      )}
+
+      {actionError && (
+        <div className="rounded-lg border border-red-500/40 bg-red-500/10 px-4 py-3 text-sm text-red-400">
+          {decodeURIComponent(actionError)}
+        </div>
+      )}
+
       <div className="grid gap-6 lg:grid-cols-[2fr_1fr]">
         <div className="rounded-2xl border border-[color:var(--border)] bg-[color:var(--surface)] p-6">
           <h2 className="text-lg font-semibold text-white">
             {sale.tenant.name}
           </h2>
           <p className="text-sm text-muted">Scarf store receipt</p>
+          <p className="mt-2 text-sm text-white/60">Status: {sale.status}</p>
+          {sale.status === "VOIDED" && sale.notes && (
+            <p className="mt-1 text-sm text-rose-300">Void reason: {sale.notes}</p>
+          )}
+          {sale.status === "REFUNDED" && sale.notes && (
+            <p className="mt-1 text-sm text-amber-300">Refund reason: {sale.notes}</p>
+          )}
           <div className="mt-6 space-y-3">
             {sale.items.map((item) => (
               <div
@@ -93,6 +121,14 @@ export default async function TransactionDetailPage({
             <div className="flex items-center justify-between">
               <span>Subtotal</span>
               <span>{formatMoney(sale.subtotalCents)}</span>
+            </div>
+            <div className="flex items-center justify-between">
+              <span>Tax</span>
+              <span>{formatMoney(sale.taxAmountCents || 0)}</span>
+            </div>
+            <div className="flex items-center justify-between">
+              <span>Discount</span>
+              <span>-{formatMoney(sale.discountCents || 0)}</span>
             </div>
             <div className="flex items-center justify-between text-base font-semibold text-white">
               <span>Total</span>
@@ -119,6 +155,8 @@ export default async function TransactionDetailPage({
               Send receipt
             </Button>
           </form>
+
+          <ReceiptActions saleId={sale.id} saleTotalCents={sale.totalCents} />
         </div>
       </div>
     </div>

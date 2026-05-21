@@ -15,7 +15,6 @@ export async function GET() {
         name: true,
         description: true,
         phone: true,
-        website: true,
         logo: true,
       },
     });
@@ -40,6 +39,10 @@ export async function PUT(request: NextRequest) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
+  if (session.role !== "owner") {
+    return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+  }
+
   try {
     const data = await request.json();
 
@@ -49,14 +52,12 @@ export async function PUT(request: NextRequest) {
         name: data.name,
         description: data.description,
         phone: data.phone,
-        website: data.website,
         logo: data.logo,
       },
       select: {
         name: true,
         description: true,
         phone: true,
-        website: true,
         logo: true,
       },
     });

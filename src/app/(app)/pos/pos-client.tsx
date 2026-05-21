@@ -10,6 +10,7 @@ export type PosProduct = {
   id: string;
   name: string;
   priceCents: number;
+  stockQuantity: number;
   category: string | null;
   description?: string | null;
   imageUrl?: string | null;
@@ -26,6 +27,7 @@ type RecentSale = {
   id: string;
   customerEmail?: string;
   customerName?: string;
+  status: string;
   totalCents: number;
   createdAt: string;
   items: Array<{
@@ -119,6 +121,10 @@ export function PosClient({ products, error }: PosClientProps) {
   function addToCart(product: PosProduct) {
     setCart((prev) => {
       const existing = prev.find((item) => item.productId === product.id);
+      const currentQuantity = existing?.quantity || 0;
+      if (currentQuantity >= product.stockQuantity) {
+        return prev;
+      }
       if (existing) {
         return prev.map((item) =>
           item.productId === product.id
@@ -141,11 +147,16 @@ export function PosClient({ products, error }: PosClientProps) {
   function updateQuantity(productId: string, delta: number) {
     setCart((prev) =>
       prev
-        .map((item) =>
-          item.productId === productId
-            ? { ...item, quantity: Math.max(1, item.quantity + delta) }
-            : item
-        )
+        .map((item) => {
+          if (item.productId !== productId) {
+            return item;
+          }
+
+          const product = products.find((p) => p.id === productId);
+          const maxQuantity = product?.stockQuantity ?? item.quantity;
+          const nextQuantity = Math.max(1, Math.min(maxQuantity, item.quantity + delta));
+          return { ...item, quantity: nextQuantity };
+        })
         .filter((item) => item.quantity > 0)
     );
   }
@@ -158,22 +169,6 @@ export function PosClient({ products, error }: PosClientProps) {
     if (confirm("Clear cart? This cannot be undone.")) {
       setCart([]);
     }
-  }
-
-  function recreateOrder(sale: RecentSale) {
-    const newCart: CartItem[] = sale.items.map((item) => {
-      const product = products.find((p) => p.name === item.name);
-      return {
-        productId: product?.id || "",
-        name: item.name,
-        priceCents: item.unitPriceCents,
-        quantity: item.quantity,
-      };
-    });
-    setCart(newCart);
-    setShowHistory(false);
-    setCustomerName(sale.customerName || "");
-    setEmail(sale.customerEmail || "");
   }
 
   return (
@@ -274,13 +269,17 @@ export function PosClient({ products, error }: PosClientProps) {
                 <p className="mt-2 text-sm text-white/80">
                   {formatMoney(product.priceCents)}
                 </p>
+                <p className="mt-1 text-xs text-white/50">
+                  Stock: {product.stockQuantity}
+                </p>
                 <Button
                   type="button"
                   variant="outline"
                   className="mt-3 w-full"
                   onClick={() => addToCart(product)}
+                  disabled={product.stockQuantity <= 0}
                 >
-                  Add to cart
+                  {product.stockQuantity <= 0 ? "Out of stock" : "Add to cart"}
                 </Button>
               </div>
             ))}
@@ -345,6 +344,9 @@ export function PosClient({ products, error }: PosClientProps) {
                       -
                     </Button>
                     <span className="text-sm text-white">{item.quantity}</span>
+                    <span className="text-xs text-white/50">
+                      / {products.find((p) => p.id === item.productId)?.stockQuantity || 0}
+                    </span>
                     <Button
                       type="button"
                       variant="outline"
@@ -400,7 +402,7 @@ export function PosClient({ products, error }: PosClientProps) {
                       {new Date(sale.createdAt).toLocaleDateString()}
                     </p>
                     <div className="mt-2 space-y-1">
-                      {sale.items.map((item: any, idx: number) => (
+                      {sale.items.map((item, idx) => (
                         <p key={idx} className="text-xs text-white/60">
                           {item.quantity}x {item.name}
                         </p>
@@ -411,15 +413,6 @@ export function PosClient({ products, error }: PosClientProps) {
                     <p className="text-sm font-semibold text-white">
                       {formatMoney(sale.totalCents)}
                     </p>
-                    <Button
-                      type="button"
-                      variant="outline"
-                      size="sm"
-                      onClick={() => recreateOrder(sale)}
-                      className="mt-2"
-                    >
-                      Recreate
-                    </Button>
                   </div>
                 </div>
               </div>

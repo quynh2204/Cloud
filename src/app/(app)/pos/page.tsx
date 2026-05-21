@@ -6,6 +6,7 @@ const errorMessages: Record<string, string> = {
   EmptyCart: "Add at least one item before checkout.",
   MissingProduct: "Some products were not found. Try again.",
   InvalidCart: "Cart data was invalid. Try again.",
+  CreateSaleFailed: "Could not complete sale. Please try again.",
 };
 
 export default async function PosPage({
@@ -24,6 +25,7 @@ export default async function PosPage({
     id: p.id,
     name: p.name,
     priceCents: p.priceCents,
+    stockQuantity: p.stockQuantity,
     category: p.category,
     description: p.description,
     imageUrl: p.imageUrl,
@@ -31,7 +33,7 @@ export default async function PosPage({
 
   const params = await searchParams;
   const error = params?.error
-    ? errorMessages[params.error]
+    ? errorMessages[params.error] || decodeURIComponent(params.error)
     : undefined;
 
   return (

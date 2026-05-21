@@ -10,23 +10,14 @@ export async function GET() {
   }
 
   try {
-    const user = await prisma.user.findUnique({
-      where: { id: session.userId },
-      select: {
-        id: true,
-      },
-    });
-
     const tenant = await prisma.tenant.findUnique({
       where: { id: session.tenantId },
       select: {
-        twoFactorEnabled: true,
         passwordChangedAt: true,
       },
     });
 
     return NextResponse.json({
-      twoFactorEnabled: tenant?.twoFactorEnabled || false,
       passwordChangedAt: tenant?.passwordChangedAt,
     });
   } catch (error) {
@@ -45,7 +36,7 @@ export async function POST(request: NextRequest) {
   }
 
   try {
-    const { action, oldPassword, newPassword, enable2FA } = await request.json();
+    const { action, oldPassword, newPassword } = await request.json();
 
     if (action === "change-password") {
       if (!oldPassword || !newPassword) {
@@ -74,7 +65,10 @@ export async function POST(request: NextRequest) {
       const validPassword = await bcrypt.compare(oldPassword, user.passwordHash);
       if (!validPassword) {
         return NextResponse.json(
-          { error: "Current password is incorrect" },
+          {
+            error: "Current password is incorrect",
+            errorCode: "INVALID_CURRENT_PASSWORD",
+          },
           { status: 401 }
         );
       }
@@ -93,19 +87,6 @@ export async function POST(request: NextRequest) {
       });
 
       return NextResponse.json({ success: true, message: "Password changed" });
-    }
-
-    if (action === "toggle-2fa") {
-      const updated = await prisma.tenant.update({
-        where: { id: session.tenantId },
-        data: { twoFactorEnabled: enable2FA },
-        select: { twoFactorEnabled: true },
-      });
-
-      return NextResponse.json({
-        success: true,
-        twoFactorEnabled: updated.twoFactorEnabled,
-      });
     }
 
     return NextResponse.json({ error: "Invalid action" }, { status: 400 });

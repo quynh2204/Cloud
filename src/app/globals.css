@@ -12,6 +12,18 @@
   --danger: #f25f5c;
 }
 
+[data-theme="light"] {
+  --bg: #eef2f8;
+  --surface: #ffffff;
+  --surface-strong: #f6f8fd;
+  --border: rgba(15, 23, 42, 0.15);
+  --text: #0f172a;
+  --muted: #475569;
+  --accent: #2563eb;
+  --accent-2: #0f766e;
+  --danger: #dc2626;
+}
+
 @theme inline {
   --font-sans: var(--font-sora);
   --font-mono: var(--font-space-mono);
@@ -26,6 +38,46 @@
       var(--bg);
     color: var(--text);
     font-family: var(--font-sans), system-ui, -apple-system, sans-serif;
+  }
+
+  [data-theme="light"] .text-white {
+    color: #0f172a !important;
+  }
+
+  [data-theme="light"] .text-white\/90 {
+    color: rgba(15, 23, 42, 0.9) !important;
+  }
+
+  [data-theme="light"] .text-white\/80 {
+    color: rgba(15, 23, 42, 0.8) !important;
+  }
+
+  [data-theme="light"] .text-white\/70 {
+    color: rgba(15, 23, 42, 0.7) !important;
+  }
+
+  [data-theme="light"] .text-white\/60 {
+    color: rgba(15, 23, 42, 0.6) !important;
+  }
+
+  [data-theme="light"] .text-white\/50 {
+    color: rgba(15, 23, 42, 0.5) !important;
+  }
+
+  [data-theme="light"] .text-white\/40 {
+    color: rgba(15, 23, 42, 0.4) !important;
+  }
+
+  [data-theme="light"] .bg-gray-800 {
+    background-color: #ffffff !important;
+  }
+
+  [data-theme="light"] .bg-gray-700 {
+    background-color: #e2e8f0 !important;
+  }
+
+  [data-theme="light"] .border-gray-700 {
+    border-color: rgba(15, 23, 42, 0.15) !important;
   }
 
   a {

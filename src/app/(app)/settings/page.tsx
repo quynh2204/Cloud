@@ -2,20 +2,23 @@
 
 import Link from "next/link";
 import { useEffect, useState } from "react";
+import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/Button";
 import { Input } from "@/components/ui/Input";
+import { PasswordInput } from "@/components/ui/PasswordInput";
 import { Textarea } from "@/components/ui/Textarea";
 
 type ShopSettings = {
   name: string;
   description: string;
   phone: string;
-  website: string;
   logo: string;
 };
 
-type SecuritySettings = {
-  twoFactorEnabled: boolean;
+type CurrentUser = {
+  role: string;
+  isOwner: boolean;
+  canManageProducts: boolean;
 };
 
 export default function SettingsPage({
@@ -23,16 +26,14 @@ export default function SettingsPage({
 }: {
   searchParams: Promise<{ error?: string; success?: string }>;
 }) {
+  const router = useRouter();
   const [params, setParams] = useState<{ error?: string; success?: string }>({});
+  const [currentUser, setCurrentUser] = useState<CurrentUser | null>(null);
   const [shopSettings, setShopSettings] = useState<ShopSettings>({
     name: "",
     description: "",
     phone: "",
-    website: "",
     logo: "",
-  });
-  const [securitySettings, setSecuritySettings] = useState<SecuritySettings>({
-    twoFactorEnabled: false,
   });
   const [loading, setLoading] = useState(true);
   const [saveMessage, setSaveMessage] = useState<{
@@ -44,6 +45,7 @@ export default function SettingsPage({
     newPassword: "",
     confirmPassword: "",
   });
+  const [fieldErrors, setFieldErrors] = useState<{ oldPassword?: string }>({});
 
   useEffect(() => {
     const loadParams = async () => {
@@ -57,10 +59,19 @@ export default function SettingsPage({
   useEffect(() => {
     const loadAllSettings = async () => {
       try {
-        const [shopRes, securityRes] = await Promise.all([
+        const [shopRes, meRes] = await Promise.all([
           fetch("/api/settings/shop"),
-          fetch("/api/settings/security"),
+          fetch("/api/auth/me"),
         ]);
+
+        if (meRes.ok) {
+          const me = await meRes.json();
+          setCurrentUser({
+            role: me.role,
+            isOwner: me.isOwner,
+            canManageProducts: me.canManageProducts,
+          });
+        }
 
         if (shopRes.ok) {
           const data = await shopRes.json();
@@ -68,14 +79,8 @@ export default function SettingsPage({
             name: data.name ?? "",
             description: data.description ?? "",
             phone: data.phone ?? "",
-            website: data.website ?? "",
             logo: data.logo ?? "",
           });
-        }
-
-        if (securityRes.ok) {
-          const data = await securityRes.json();
-          setSecuritySettings(data);
         }
       } catch (error) {
         console.error("Failed to load settings:", error);
@@ -87,7 +92,14 @@ export default function SettingsPage({
     loadAllSettings();
   }, []);
 
+  const canEditShop = currentUser?.isOwner ?? false;
+
   const handleSaveShopSettings = async () => {
+    if (!canEditShop) {
+      setSaveMessage({ type: "error", text: "Only owners can edit shop information." });
+      return;
+    }
+
     try {
       const res = await fetch("/api/settings/shop", {
         method: "PUT",
@@ -98,15 +110,18 @@ export default function SettingsPage({
       if (res.ok) {
         setSaveMessage({ type: "success", text: "Shop settings saved!" });
         setTimeout(() => setSaveMessage(null), 3000);
+        router.refresh();
       } else {
         setSaveMessage({ type: "error", text: "Failed to save settings" });
       }
-    } catch (error) {
+    } catch {
       setSaveMessage({ type: "error", text: "Error saving settings" });
     }
   };
 
   const handleChangePassword = async () => {
+    setFieldErrors({});
+
     if (passwordChange.newPassword !== passwordChange.confirmPassword) {
       setSaveMessage({ type: "error", text: "Passwords do not match" });
       return;
@@ -129,38 +144,13 @@ export default function SettingsPage({
         setTimeout(() => setSaveMessage(null), 3000);
       } else {
         const data = await res.json();
+        if (data?.errorCode === "INVALID_CURRENT_PASSWORD") {
+          setFieldErrors({ oldPassword: data.error || "Current password is incorrect" });
+        }
         setSaveMessage({ type: "error", text: data.error || "Failed to change password" });
       }
-    } catch (error) {
+    } catch {
       setSaveMessage({ type: "error", text: "Error changing password" });
-    }
-  };
-
-  const handleToggle2FA = async (enabled: boolean) => {
-    try {
-      const res = await fetch("/api/settings/security", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          action: "toggle-2fa",
-          enable2FA: enabled,
-        }),
-      });
-
-      if (res.ok) {
-        const data = await res.json();
-        setSecuritySettings((prev) => ({
-          ...prev,
-          twoFactorEnabled: data.twoFactorEnabled,
-        }));
-        setSaveMessage({
-          type: "success",
-          text: `2FA ${enabled ? "enabled" : "disabled"}`,
-        });
-        setTimeout(() => setSaveMessage(null), 3000);
-      }
-    } catch (error) {
-      setSaveMessage({ type: "error", text: "Error updating 2FA" });
     }
   };
 
@@ -202,6 +192,12 @@ export default function SettingsPage({
       <div className="rounded-lg border border-gray-700 bg-gray-800 p-6">
         <h2 className="mb-6 text-xl font-semibold text-white">Shop Information</h2>
 
+        {!canEditShop && !loading && (
+          <div className="mb-4 rounded-lg border border-[color:var(--border)] bg-[color:var(--surface-strong)] px-4 py-3 text-sm text-white/70">
+            Your account is read-only for shop information. Only the owner can change the shop name, logo, and contact details.
+          </div>
+        )}
+
         {loading ? (
           <p className="text-white/50">Loading...</p>
         ) : (
@@ -212,6 +208,7 @@ export default function SettingsPage({
               </label>
               <Input
                 value={shopSettings.name}
+                  disabled={!canEditShop}
                 onChange={(e) =>
                   setShopSettings((prev) => ({ ...prev, name: e.target.value }))
                 }
@@ -225,6 +222,7 @@ export default function SettingsPage({
               </label>
               <Textarea
                 value={shopSettings.description}
+                  disabled={!canEditShop}
                 onChange={(e) =>
                   setShopSettings((prev) => ({
                     ...prev,
@@ -244,24 +242,11 @@ export default function SettingsPage({
                 <Input
                   type="tel"
                   value={shopSettings.phone}
+                  disabled={!canEditShop}
                   onChange={(e) =>
                     setShopSettings((prev) => ({ ...prev, phone: e.target.value }))
                   }
                   placeholder="+84 123 456 789"
-                />
-              </div>
-
-              <div>
-                <label className="text-xs uppercase tracking-wide text-white/50">
-                  Website
-                </label>
-                <Input
-                  type="url"
-                  value={shopSettings.website}
-                  onChange={(e) =>
-                    setShopSettings((prev) => ({ ...prev, website: e.target.value }))
-                  }
-                  placeholder="https://myshop.com"
                 />
               </div>
             </div>
@@ -273,16 +258,22 @@ export default function SettingsPage({
               <Input
                 type="url"
                 value={shopSettings.logo}
+                disabled={!canEditShop}
                 onChange={(e) =>
                   setShopSettings((prev) => ({ ...prev, logo: e.target.value }))
                 }
                 placeholder="https://myshop.com/logo.png"
               />
+              <p className="mt-1 text-xs text-white/50">
+                Logo will be used as the shop avatar in the sidebar.
+              </p>
             </div>
 
-            <Button onClick={handleSaveShopSettings} className="w-full">
-              Save Shop Information
-            </Button>
+            {canEditShop && (
+              <Button onClick={handleSaveShopSettings} className="w-full">
+                Save Shop Information
+              </Button>
+            )}
           </div>
         )}
       </div>
@@ -308,8 +299,7 @@ export default function SettingsPage({
                 <label className="text-xs uppercase tracking-wide text-white/50">
                   Current Password
                 </label>
-                <Input
-                  type="password"
+                <PasswordInput
                   value={passwordChange.oldPassword}
                   onChange={(e) =>
                     setPasswordChange((prev) => ({
@@ -319,14 +309,16 @@ export default function SettingsPage({
                   }
                   placeholder="••••••••"
                 />
+                {fieldErrors.oldPassword && (
+                  <p className="mt-1 text-xs text-red-400">{fieldErrors.oldPassword}</p>
+                )}
               </div>
 
               <div>
                 <label className="text-xs uppercase tracking-wide text-white/50">
                   New Password
                 </label>
-                <Input
-                  type="password"
+                <PasswordInput
                   value={passwordChange.newPassword}
                   onChange={(e) =>
                     setPasswordChange((prev) => ({
@@ -342,8 +334,7 @@ export default function SettingsPage({
                 <label className="text-xs uppercase tracking-wide text-white/50">
                   Confirm Password
                 </label>
-                <Input
-                  type="password"
+                <PasswordInput
                   value={passwordChange.confirmPassword}
                   onChange={(e) =>
                     setPasswordChange((prev) => ({
@@ -358,32 +349,6 @@ export default function SettingsPage({
               <Button onClick={handleChangePassword} className="w-full">
                 Update Password
               </Button>
-            </div>
-
-            {/* Two-Factor Authentication */}
-            <div className="space-y-4 border-t border-gray-700 pt-6">
-              <div className="flex items-center justify-between">
-                <div>
-                  <h3 className="text-lg font-medium text-white">
-                    Two-Factor Authentication
-                  </h3>
-                  <p className="mt-1 text-sm text-white/60">
-                    {securitySettings.twoFactorEnabled
-                      ? "✓ 2FA is enabled"
-                      : "Add an extra layer of security"}
-                  </p>
-                </div>
-                <Button
-                  onClick={() =>
-                    handleToggle2FA(!securitySettings.twoFactorEnabled)
-                  }
-                  variant={
-                    securitySettings.twoFactorEnabled ? "outline" : "default"
-                  }
-                >
-                  {securitySettings.twoFactorEnabled ? "Disable" : "Enable"}
-                </Button>
-              </div>
             </div>
           </div>
         )}

@@ -2,6 +2,7 @@ import Link from "next/link";
 import { registerAction } from "@/app/actions/auth";
 import { Button } from "@/components/ui/Button";
 import { Input } from "@/components/ui/Input";
+import { PasswordInput } from "@/components/ui/PasswordInput";
 
 const errorMessages: Record<string, string> = {
   MissingFields: "Please fill in all fields.",
@@ -66,9 +67,8 @@ export default async function RegisterPage({
           <label className="text-xs uppercase tracking-wide text-white/50">
             Password
           </label>
-          <Input
+          <PasswordInput
             name="password"
-            type="password"
             placeholder="Min 8 characters"
             minLength={8}
             required
