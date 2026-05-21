@@ -64,7 +64,13 @@ export default function SettingsPage({
 
         if (shopRes.ok) {
           const data = await shopRes.json();
-          setShopSettings(data);
+          setShopSettings({
+            name: data.name ?? "",
+            description: data.description ?? "",
+            phone: data.phone ?? "",
+            website: data.website ?? "",
+            logo: data.logo ?? "",
+          });
         }
 
         if (securityRes.ok) {
