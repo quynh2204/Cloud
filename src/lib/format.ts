@@ -7,9 +7,9 @@ export function formatMoney(cents: number) {
 }
 
 export function toCents(value: string) {
-  const numeric = Number.parseFloat(value.replace(/,/g, "."));
-  if (Number.isNaN(numeric)) {
+  const digits = value.replace(/[^0-9]/g, "");
+  if (!digits) {
     return 0;
   }
-  return Math.round(numeric);
+  return Number.parseInt(digits, 10);
 }

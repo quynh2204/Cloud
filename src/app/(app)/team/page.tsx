@@ -7,10 +7,11 @@ import { Select } from "@/components/ui/Select";
 
 const errorMessages: Record<string, string> = {
   MissingFields: "Fill in all required fields.",
-  UserExists: "Email already exists for this tenant.",
+  UserExists: "Email already exists.",
   Forbidden: "Only owners can manage users.",
   CannotDeleteSelf: "You cannot delete your own account.",
   WeakPassword: "Password must be at least 8 characters.",
+  CreateFailed: "Failed to create user. Please try again.",
 };
 
 export default async function TeamPage({

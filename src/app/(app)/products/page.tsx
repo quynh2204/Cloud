@@ -138,7 +138,7 @@ export default async function ProductsPage() {
                   <Input
                     name="price"
                     type="number"
-                    defaultValue={(product.priceCents / 100).toString()}
+                    defaultValue={product.priceCents.toString()}
                     required
                   />
                 </div>

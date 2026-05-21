@@ -26,12 +26,7 @@ export async function createUserAction(formData: FormData) {
   }
 
   const existing = await prisma.user.findUnique({
-    where: {
-      tenantId_email: {
-        tenantId: session.tenantId,
-        email,
-      },
-    },
+    where: { email },
   });
 
   if (existing) {
@@ -40,15 +35,24 @@ export async function createUserAction(formData: FormData) {
 
   const passwordHash = await bcrypt.hash(password, 10);
 
-  await prisma.user.create({
-    data: {
-      tenantId: session.tenantId,
-      name,
-      email,
-      passwordHash,
-      role: role === "owner" ? "owner" : "staff",
-    },
-  });
+  try {
+    await prisma.user.create({
+      data: {
+        tenantId: session.tenantId,
+        name,
+        email,
+        passwordHash,
+        role: role === "owner" ? "owner" : "staff",
+      },
+    });
+  } catch (error) {
+    const msg = error instanceof Error ? error.message : "Create user failed";
+    if (msg.includes("Unique constraint failed")) {
+      redirect("/team?error=UserExists");
+    }
+    console.error("Create user error:", msg);
+    redirect("/team?error=CreateFailed");
+  }
 
   revalidatePath("/team");
 }

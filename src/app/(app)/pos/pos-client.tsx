@@ -4,7 +4,7 @@ import { useMemo, useState, useEffect } from "react";
 import { createSaleAction } from "@/app/actions/sales";
 import { Button } from "@/components/ui/Button";
 import { Input } from "@/components/ui/Input";
-import { formatMoney } from "@/lib/format";
+import { formatMoney, toCents } from "@/lib/format";
 
 export type PosProduct = {
   id: string;
@@ -107,7 +107,7 @@ export function PosClient({ products, error }: PosClientProps) {
   // Calculate change if payment method is cash
   const change = useMemo(() => {
     if (paymentMethod !== "cash" || !amountReceived) return 0;
-    const amount = Math.round(parseFloat(amountReceived) * 100);
+    const amount = toCents(amountReceived);
     return Math.max(0, amount - totals.total);
   }, [paymentMethod, amountReceived, totals.total]);
 
@@ -524,8 +524,8 @@ export function PosClient({ products, error }: PosClientProps) {
                 name="amountReceived"
                 value={amountReceived}
                 onChange={(e) => setAmountReceived(e.target.value)}
-                placeholder="0.00"
-                step="0.01"
+                placeholder="0"
+                step="1"
                 min="0"
               />
             </div>
@@ -570,7 +570,7 @@ export function PosClient({ products, error }: PosClientProps) {
           <input
             type="hidden"
             name="amountReceivedCents"
-            value={Math.round(parseFloat(amountReceived) * 100)}
+            value={toCents(amountReceived)}
           />
         )}
 
