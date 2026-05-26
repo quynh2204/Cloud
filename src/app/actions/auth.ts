@@ -39,7 +39,7 @@ export async function registerAction(formData: FormData) {
     redirect("/register?error=InvalidTenant");
   }
 
-  const existingTenant = await prisma.tenant.findUnique({
+  const existingTenant = await prisma.tenant.findFirst({
     where: { slug: tenantSlug },
   });
 
@@ -48,7 +48,7 @@ export async function registerAction(formData: FormData) {
   }
 
   // Check if email already exists globally (unique constraint)
-  const existingUser = await prisma.user.findUnique({
+  const existingUser = await prisma.user.findFirst({
     where: { email },
   });
 
@@ -111,7 +111,7 @@ export async function loginAction(formData: FormData) {
     redirect("/login?error=InvalidTenant");
   }
 
-  const tenant = await prisma.tenant.findUnique({
+  const tenant = await prisma.tenant.findFirst({
     where: { slug: tenantSlug },
   });
 
@@ -119,7 +119,7 @@ export async function loginAction(formData: FormData) {
     redirect("/login?error=InvalidCredentials");
   }
 
-  const user = await prisma.user.findUnique({
+  const user = await prisma.user.findFirst({
     where: {
       email,
     },

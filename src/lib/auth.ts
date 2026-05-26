@@ -6,6 +6,7 @@ import prisma from "@/lib/db";
 const SESSION_COOKIE = "pos_session";
 const SESSION_DURATION = "7d";
 
+
 export type SessionPayload = {
   userId: string;
   tenantId: string;
@@ -13,6 +14,23 @@ export type SessionPayload = {
   userName: string;
   role: string;
 };
+
+function isSessionPayload(payload: unknown): payload is SessionPayload {
+  if (!payload || typeof payload !== "object") {
+    return false;
+  }
+
+  const candidate = payload as Partial<SessionPayload>;
+  return (
+    typeof candidate.userId === "string" &&
+    typeof candidate.tenantId === "string" &&
+    typeof candidate.tenantName === "string" &&
+    typeof candidate.userName === "string" &&
+    typeof candidate.role === "string" &&
+    candidate.userId.length > 0 &&
+    candidate.tenantId.length > 0
+  );
+}
 
 function getSessionSecret() {
   const secret = process.env.SESSION_SECRET;
@@ -48,20 +66,22 @@ export async function getSession() {
   try {
     const { payload } = await jwtVerify(token, getSessionSecret());
 
-    if (payload.userId && payload.tenantId) {
+    if (isSessionPayload(payload)) {
       const tenant = await prisma.tenant.findUnique({
         where: { id: String(payload.tenantId) },
         select: { passwordChangedAt: true },
       });
-
-      const issuedAt = typeof payload.iat === "number" ? payload.iat : null;
+      const issuedAt =
+        typeof (payload as { iat?: unknown }).iat === "number"
+          ? ((payload as { iat?: number }).iat ?? null)
+          : null;
       const changedAt = tenant?.passwordChangedAt;
       if (issuedAt && changedAt && issuedAt * 1000 < changedAt.getTime()) {
         return null;
       }
     }
 
-    return payload as SessionPayload;
+    return isSessionPayload(payload) ? payload : null;
   } catch {
     return null;
   }
