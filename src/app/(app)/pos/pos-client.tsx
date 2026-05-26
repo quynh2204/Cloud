@@ -1,10 +1,17 @@
 "use client";
 
 import { useMemo, useState, useEffect } from "react";
+import QRCode from "qrcode";
 import { createSaleAction } from "@/app/actions/sales";
 import { Button } from "@/components/ui/Button";
 import { Input } from "@/components/ui/Input";
 import { formatMoney, toCents } from "@/lib/format";
+import { PAYMENT_METHOD, type PaymentMethod } from "@/lib/sales";
+import {
+  buildTenantBankTransferText,
+  hasTenantBankConfig,
+  type TenantBankConfig,
+} from "@/lib/bankQr";
 
 export type PosProduct = {
   id: string;
@@ -40,6 +47,8 @@ type RecentSale = {
 type PosClientProps = {
   products: PosProduct[];
   error?: string;
+  tenantName: string;
+  bankConfig: TenantBankConfig | null;
 };
 
 function isValidEmail(email: string): boolean {
@@ -48,7 +57,7 @@ function isValidEmail(email: string): boolean {
   return emailRegex.test(email);
 }
 
-export function PosClient({ products, error }: PosClientProps) {
+export function PosClient({ products, error, tenantName, bankConfig }: PosClientProps) {
   const [cart, setCart] = useState<CartItem[]>([]);
   const [email, setEmail] = useState("");
   const [emailError, setEmailError] = useState("");
@@ -56,9 +65,14 @@ export function PosClient({ products, error }: PosClientProps) {
   const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
   const [customerName, setCustomerName] = useState("");
   const [customerPhone, setCustomerPhone] = useState("");
-  const [paymentMethod, setPaymentMethod] = useState("cash");
+  const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>(
+    PAYMENT_METHOD.CASH
+  );
   const [amountReceived, setAmountReceived] = useState("");
+  const [paymentError, setPaymentError] = useState("");
   const [notes, setNotes] = useState("");
+  const [bankQrDataUrl, setBankQrDataUrl] = useState("");
+  const [bankQrError, setBankQrError] = useState("");
   const [recentSales, setRecentSales] = useState<RecentSale[]>([]);
   const [showHistory, setShowHistory] = useState(false);
 
@@ -108,10 +122,66 @@ export function PosClient({ products, error }: PosClientProps) {
 
   // Calculate change if payment method is cash
   const change = useMemo(() => {
-    if (paymentMethod !== "cash" || !amountReceived) return 0;
+    if (paymentMethod !== PAYMENT_METHOD.CASH || !amountReceived) return 0;
     const amount = toCents(amountReceived);
     return Math.max(0, amount - totals.total);
   }, [paymentMethod, amountReceived, totals.total]);
+
+  const cashShortage = useMemo(() => {
+    if (paymentMethod !== PAYMENT_METHOD.CASH || !amountReceived) {
+      return 0;
+    }
+
+    const amount = toCents(amountReceived);
+    return Math.max(0, totals.total - amount);
+  }, [paymentMethod, amountReceived, totals.total]);
+
+  const bankTransferText = useMemo(() => {
+    if (paymentMethod !== PAYMENT_METHOD.TRANSFER || !bankConfig || !hasTenantBankConfig(bankConfig)) {
+      return "";
+    }
+
+    return buildTenantBankTransferText({
+      amountCents: totals.total,
+      bankConfig,
+    });
+  }, [bankConfig, paymentMethod, totals.total]);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    async function createQr() {
+      if (!bankTransferText) {
+        setBankQrDataUrl("");
+        setBankQrError("");
+        return;
+      }
+
+      try {
+            // For EMVCo payload we generate QR from the payload string
+            const dataUrl = await QRCode.toDataURL(bankTransferText, {
+          width: 320,
+          margin: 2,
+          errorCorrectionLevel: "M",
+        });
+        if (!cancelled) {
+          setBankQrDataUrl(dataUrl);
+          setBankQrError("");
+        }
+      } catch (error) {
+        if (!cancelled) {
+          setBankQrDataUrl("");
+          setBankQrError(error instanceof Error ? error.message : "Failed to generate QR code");
+        }
+      }
+    }
+
+    createQr();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [bankTransferText]);
 
   function handleEmailChange(value: string) {
     setEmail(value);
@@ -425,9 +495,16 @@ export function PosClient({ products, error }: PosClientProps) {
       <form
         action={createSaleAction}
         onSubmit={(e) => {
+          setPaymentError("");
           if (email && !isValidEmail(email)) {
             e.preventDefault();
             setEmailError("Invalid email address");
+            return;
+          }
+
+          if (paymentMethod === PAYMENT_METHOD.CASH && cashShortage > 0) {
+            e.preventDefault();
+            setPaymentError("Amount received must be greater than or equal to total.");
             return;
           }
         }}
@@ -486,27 +563,71 @@ export function PosClient({ products, error }: PosClientProps) {
             Payment method
           </label>
           <div className="mt-3 grid gap-3 md:grid-cols-3">
-            {["cash", "card", "transfer"].map((method) => (
+            {([PAYMENT_METHOD.CASH, PAYMENT_METHOD.CARD, PAYMENT_METHOD.TRANSFER] as PaymentMethod[]).map((method) => (
               <button
                 key={method}
                 type="button"
-                onClick={() => setPaymentMethod(method)}
+                onClick={() => {
+                  setPaymentMethod(method);
+                  setPaymentError("");
+                }}
                 className={`rounded-lg px-4 py-2 text-sm font-medium transition ${
                   paymentMethod === method
                     ? "bg-white text-[color:var(--surface)]"
                     : "border border-[color:var(--border)] text-white/70 hover:text-white"
                 }`}
               >
-                {method === "cash" && "💰 Cash"}
-                {method === "card" && "💳 Card"}
-                {method === "transfer" && "🏦 Transfer"}
+                {method === PAYMENT_METHOD.CASH && "💰 Cash"}
+                {method === PAYMENT_METHOD.CARD && "💳 Card"}
+                {method === PAYMENT_METHOD.TRANSFER && "🏦 Transfer"}
               </button>
             ))}
           </div>
         </div>
 
+        {paymentMethod === PAYMENT_METHOD.TRANSFER && (
+          <div className="mt-6 rounded-2xl border border-[color:var(--border)] bg-[color:var(--surface-strong)] p-4">
+            <div className="flex items-start justify-between gap-4">
+              <div>
+                <h3 className="text-sm font-semibold text-white">Bank transfer QR</h3>
+                <p className="mt-1 text-xs text-white/60">
+                  Scan this QR to see the tenant&apos;s bank transfer details. QR is generated locally and has no gateway fee.
+                </p>
+              </div>
+              <span className="rounded-full border border-[color:var(--border)] px-3 py-1 text-[11px] uppercase tracking-wide text-white/50">
+                Tenant QR
+              </span>
+            </div>
+
+            {!hasTenantBankConfig(bankConfig) && (
+              <div className="mt-4 rounded-lg border border-yellow-500/30 bg-yellow-500/10 px-4 py-3 text-sm text-yellow-200">
+                Bank details are not configured yet. Set them in Settings to enable QR payment.
+              </div>
+            )}
+
+            {hasTenantBankConfig(bankConfig) && bankQrDataUrl && (
+              <div className="mt-4 grid gap-4 md:grid-cols-[auto_1fr] md:items-center">
+                <div className="rounded-xl bg-white p-3">
+                  <img src={bankQrDataUrl} alt="Tenant bank transfer QR" className="h-56 w-56" />
+                </div>
+                <div className="space-y-2 text-sm text-white/80">
+                  <p><span className="text-white/50">Bank:</span> {bankConfig?.bankName}</p>
+                  <p><span className="text-white/50">Account:</span> {bankConfig?.accountNumber}</p>
+                  <p><span className="text-white/50">Name:</span> {bankConfig?.accountName}</p>
+                  <p><span className="text-white/50">Amount:</span> {formatMoney(totals.total)}</p>
+                  <p><span className="text-white/50">Note:</span> {bankConfig?.transferNotePrefix ?? "PAYMENT"}</p>
+                </div>
+              </div>
+            )}
+
+            {bankQrError && (
+              <p className="mt-3 text-sm text-[color:var(--danger)]">{bankQrError}</p>
+            )}
+          </div>
+        )}
+
         {/* Amount Received (for cash only) */}
-        {paymentMethod === "cash" && (
+        {paymentMethod === PAYMENT_METHOD.CASH && (
           <div className="mt-6 grid gap-4 md:grid-cols-2">
             <div>
               <label className="text-xs uppercase tracking-wide text-white/50">
@@ -516,11 +637,24 @@ export function PosClient({ products, error }: PosClientProps) {
                 type="number"
                 name="amountReceived"
                 value={amountReceived}
-                onChange={(e) => setAmountReceived(e.target.value)}
+                onChange={(e) => {
+                  setAmountReceived(e.target.value);
+                  if (paymentError) {
+                    setPaymentError("");
+                  }
+                }}
                 placeholder="0"
                 step="1"
                 min="0"
               />
+              {paymentError && (
+                <p className="mt-1 text-xs text-[color:var(--danger)]">{paymentError}</p>
+              )}
+              {cashShortage > 0 && !paymentError && (
+                <p className="mt-1 text-xs text-[color:var(--danger)]">
+                  Missing {formatMoney(cashShortage)} to complete this cash payment.
+                </p>
+              )}
             </div>
             <div>
               <label className="text-xs uppercase tracking-wide text-white/50">

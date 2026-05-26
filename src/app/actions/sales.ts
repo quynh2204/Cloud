@@ -6,6 +6,7 @@ import { requireSession } from "@/lib/auth";
 import prisma from "@/lib/db";
 import { salesService } from "@/services/salesService";
 import { emailService } from "@/services/emailService";
+import { PAYMENT_METHOD } from "@/lib/sales";
 
 type CartItem = {
   productId: string;
@@ -59,6 +60,10 @@ export async function createSaleAction(formData: FormData) {
 
   let sale;
   try {
+    const parsedAmount = amountReceivedCents
+      ? parseInt(String(amountReceivedCents), 10)
+      : undefined;
+
     sale = await salesService.createSale({
       userId: session.userId,
       tenantId: session.tenantId,
@@ -67,14 +72,19 @@ export async function createSaleAction(formData: FormData) {
       customerName: customerName || undefined,
       customerPhone: customerPhone || undefined,
       paymentMethod,
-      amountReceivedCents: amountReceivedCents
-        ? parseInt(String(amountReceivedCents), 10)
-        : undefined,
+      amountReceivedCents:
+        paymentMethod === PAYMENT_METHOD.CASH ? parsedAmount : undefined,
       notes: notes || undefined,
     });
   } catch (error) {
     const message = error instanceof Error ? error.message : "Create sale failed";
-    if (message.includes("Insufficient stock") || message.includes("Stock changed")) {
+    if (
+      message.includes("Insufficient stock") ||
+      message.includes("Stock changed") ||
+      message.includes("Amount received") ||
+      message.includes("Unsupported payment method") ||
+      message.includes("Item quantity")
+    ) {
       redirect(`/pos?error=${encodeURIComponent(message)}`);
     }
     redirect("/pos?error=CreateSaleFailed");
@@ -98,10 +108,14 @@ export async function sendReceiptAction(formData: FormData) {
   }
 
   // Update sale email
-  await prisma.sale.update({
-    where: { id: saleId },
+  const updated = await prisma.sale.updateMany({
+    where: { id: saleId, tenantId: session.tenantId },
     data: { customerEmail: email },
   });
+
+  if (updated.count !== 1) {
+    redirect(`/transactions/${saleId}?email=failed`);
+  }
 
   let emailStatus = "failed";
   try {
@@ -124,8 +138,6 @@ export async function voidSaleAction(formData: FormData) {
   const session = await requireSession();
   const saleId = String(formData.get("saleId") || "");
   const reason = String(formData.get("reason") || "").trim();
-  // Normalize to VOIDED per spec
-  const status = "VOIDED";
 
   if (!saleId) {
     redirect("/transactions?error=MissingSale");
@@ -135,7 +147,6 @@ export async function voidSaleAction(formData: FormData) {
     await salesService.voidSale({
       saleId,
       tenantId: session.tenantId,
-      status: "VOIDED",
       reason: reason || undefined,
     });
   } catch (error) {

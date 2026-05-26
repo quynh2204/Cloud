@@ -5,13 +5,15 @@ import { voidSaleAction, refundSaleAction } from "@/app/actions/sales";
 import { Button } from "@/components/ui/Button";
 import { ConfirmModal } from "@/components/ui/ConfirmModal";
 import { Input } from "@/components/ui/Input";
+import { SALE_STATUS, type SaleStatus } from "@/lib/sales";
 
 type ReceiptActionsProps = {
   saleId: string;
   saleTotalCents: number;
+  saleStatus: SaleStatus;
 };
 
-export function ReceiptActions({ saleId, saleTotalCents }: ReceiptActionsProps) {
+export function ReceiptActions({ saleId, saleTotalCents, saleStatus }: ReceiptActionsProps) {
   const voidFormRef = useRef<HTMLFormElement>(null);
   const refundFormRef = useRef<HTMLFormElement>(null);
   const [voidOpen, setVoidOpen] = useState(false);
@@ -21,6 +23,14 @@ export function ReceiptActions({ saleId, saleTotalCents }: ReceiptActionsProps) 
 
   return (
     <div className="mt-6 space-y-6 border-t border-[color:var(--border)] pt-4">
+      {saleStatus !== SALE_STATUS.COMPLETED && (
+        <div className="rounded-lg border border-[color:var(--border)] bg-[color:var(--surface-strong)] px-4 py-3 text-xs text-white/65">
+          Void and refund actions are only available for completed receipts.
+        </div>
+      )}
+
+      {saleStatus === SALE_STATUS.COMPLETED && (
+        <>
       <div>
         <h3 className="text-sm font-semibold text-white">Void receipt</h3>
         <p className="mt-1 text-xs text-white/60">
@@ -50,6 +60,8 @@ export function ReceiptActions({ saleId, saleTotalCents }: ReceiptActionsProps) 
           <input type="hidden" name="reason" value={refundReason} />
         </form>
       </div>
+        </>
+      )}
 
       <ConfirmModal
         open={voidOpen}
@@ -85,8 +97,6 @@ export function ReceiptActions({ saleId, saleTotalCents }: ReceiptActionsProps) 
           <Input value={refundReason} onChange={(event) => setRefundReason(event.target.value)} placeholder="Reason (optional)" />
         </div>
       </ConfirmModal>
-
-      {/* Replacement invoices are hidden in this phase per product owner decision. */}
     </div>
   );
 }

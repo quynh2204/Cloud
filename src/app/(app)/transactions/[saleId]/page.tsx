@@ -8,6 +8,7 @@ import {
 import { Button } from "@/components/ui/Button";
 import { Input } from "@/components/ui/Input";
 import { ReceiptActions } from "@/components/transactions/ReceiptActions";
+import { SALE_STATUS } from "@/lib/sales";
 
 const emailStatus: Record<string, string> = {
   sent: "✓ Receipt emailed successfully.",
@@ -29,7 +30,7 @@ export default async function TransactionDetailPage({
   const sale = await prisma.sale.findFirst({
     where: { id: saleId, tenantId: session.tenantId },
     include: {
-      items: { include: { product: true } },
+      items: true,
       tenant: true,
     },
   });
@@ -93,10 +94,10 @@ export default async function TransactionDetailPage({
           </h2>
           <p className="text-sm text-muted">Scarf store receipt</p>
           <p className="mt-2 text-sm text-white/60">Status: {sale.status}</p>
-          {sale.status === "VOIDED" && sale.notes && (
+          {sale.status === SALE_STATUS.VOIDED && sale.notes && (
             <p className="mt-1 text-sm text-rose-300">Void reason: {sale.notes}</p>
           )}
-          {sale.status === "REFUNDED" && sale.notes && (
+          {sale.status === SALE_STATUS.REFUNDED && sale.notes && (
             <p className="mt-1 text-sm text-amber-300">Refund reason: {sale.notes}</p>
           )}
           <div className="mt-6 space-y-3">
@@ -106,7 +107,7 @@ export default async function TransactionDetailPage({
                 className="flex items-center justify-between border-b border-[color:var(--border)] pb-3 text-sm"
               >
                 <div>
-                  <p className="text-white">{item.product.name}</p>
+                  <p className="text-white">{item.productName}</p>
                   <p className="text-xs text-white/50">
                     Qty {item.quantity} x {formatMoney(item.unitPriceCents)}
                   </p>
@@ -156,7 +157,11 @@ export default async function TransactionDetailPage({
             </Button>
           </form>
 
-          <ReceiptActions saleId={sale.id} saleTotalCents={sale.totalCents} />
+          <ReceiptActions
+            saleId={sale.id}
+            saleTotalCents={sale.totalCents}
+            saleStatus={sale.status}
+          />
         </div>
       </div>
     </div>

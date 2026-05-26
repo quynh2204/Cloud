@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getSession } from "@/lib/auth";
 import prisma from "@/lib/db";
+import { ACTIVE_REVENUE_SALE_STATUSES } from "@/lib/sales";
 
 export async function GET(request: NextRequest) {
   const session = await getSession();
@@ -14,14 +15,12 @@ export async function GET(request: NextRequest) {
     const sales = await prisma.sale.findMany({
       where: {
         tenantId: session.tenantId,
-        status: { notIn: ["VOIDED", "REFUNDED"] },
+        status: { in: ACTIVE_REVENUE_SALE_STATUSES },
       },
       orderBy: { createdAt: "desc" },
       take: limit,
       include: {
-        items: {
-          include: { product: true },
-        },
+        items: true,
       },
     });
 
@@ -33,7 +32,7 @@ export async function GET(request: NextRequest) {
       totalCents: sale.totalCents,
       createdAt: sale.createdAt.toISOString(),
       items: sale.items.map((item) => ({
-        name: item.product.name,
+        name: item.productName,
         quantity: item.quantity,
         unitPriceCents: item.unitPriceCents,
       })),

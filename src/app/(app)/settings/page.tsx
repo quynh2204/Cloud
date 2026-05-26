@@ -15,6 +15,14 @@ type ShopSettings = {
   logo: string;
 };
 
+type BankSettings = {
+  bankName: string;
+  bankBin: string;
+  accountNumber: string;
+  accountName: string;
+  transferNotePrefix: string;
+};
+
 type CurrentUser = {
   role: string;
   isOwner: boolean;
@@ -34,6 +42,13 @@ export default function SettingsPage({
     description: "",
     phone: "",
     logo: "",
+  });
+  const [bankSettings, setBankSettings] = useState<BankSettings>({
+    bankName: "",
+    bankBin: "",
+    accountNumber: "",
+    accountName: "",
+    transferNotePrefix: "PAYMENT",
   });
   const [loading, setLoading] = useState(true);
   const [saveMessage, setSaveMessage] = useState<{
@@ -81,6 +96,13 @@ export default function SettingsPage({
             phone: data.phone ?? "",
             logo: data.logo ?? "",
           });
+          setBankSettings({
+            bankName: data.bankConfig?.bankName ?? "",
+            bankBin: data.bankConfig?.bankBin ?? "",
+            accountNumber: data.bankConfig?.accountNumber ?? "",
+            accountName: data.bankConfig?.accountName ?? "",
+            transferNotePrefix: data.bankConfig?.transferNotePrefix ?? "PAYMENT",
+          });
         }
       } catch (error) {
         console.error("Failed to load settings:", error);
@@ -104,7 +126,16 @@ export default function SettingsPage({
       const res = await fetch("/api/settings/shop", {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(shopSettings),
+        body: JSON.stringify({
+          ...shopSettings,
+          bankConfig: {
+            bankName: bankSettings.bankName,
+            bankBin: bankSettings.bankBin,
+            accountNumber: bankSettings.accountNumber,
+            accountName: bankSettings.accountName,
+            transferNotePrefix: bankSettings.transferNotePrefix,
+          },
+        }),
       });
 
       if (res.ok) {
@@ -218,6 +249,20 @@ export default function SettingsPage({
 
             <div>
               <label className="text-xs uppercase tracking-wide text-white/50">
+                Bank BIN
+              </label>
+              <Input
+                value={bankSettings.bankBin}
+                disabled={!canEditShop}
+                onChange={(e) =>
+                  setBankSettings((prev) => ({ ...prev, bankBin: e.target.value }))
+                }
+                placeholder="970422"
+              />
+            </div>
+
+            <div>
+              <label className="text-xs uppercase tracking-wide text-white/50">
                 Description
               </label>
               <Textarea
@@ -272,6 +317,98 @@ export default function SettingsPage({
             {canEditShop && (
               <Button onClick={handleSaveShopSettings} className="w-full">
                 Save Shop Information
+              </Button>
+            )}
+          </div>
+        )}
+      </div>
+
+      {/* Bank Transfer QR Settings */}
+      <div className="rounded-lg border border-gray-700 bg-gray-800 p-6">
+        <h2 className="mb-6 text-xl font-semibold text-white">Bank Transfer QR</h2>
+
+        {!canEditShop && !loading && (
+          <div className="mb-4 rounded-lg border border-[color:var(--border)] bg-[color:var(--surface-strong)] px-4 py-3 text-sm text-white/70">
+            Only the owner can change bank transfer details used to generate QR codes.
+          </div>
+        )}
+
+        {loading ? (
+          <p className="text-white/50">Loading...</p>
+        ) : (
+          <div className="space-y-4">
+            <div>
+              <label className="text-xs uppercase tracking-wide text-white/50">
+                Bank Name
+              </label>
+              <Input
+                value={bankSettings.bankName}
+                disabled={!canEditShop}
+                onChange={(e) =>
+                  setBankSettings((prev) => ({ ...prev, bankName: e.target.value }))
+                }
+                placeholder="MB Bank"
+              />
+            </div>
+
+            <div className="grid gap-4 md:grid-cols-2">
+              <div>
+                <label className="text-xs uppercase tracking-wide text-white/50">
+                  Account Number
+                </label>
+                <Input
+                  value={bankSettings.accountNumber}
+                  disabled={!canEditShop}
+                  onChange={(e) =>
+                    setBankSettings((prev) => ({
+                      ...prev,
+                      accountNumber: e.target.value,
+                    }))
+                  }
+                  placeholder="0123456789"
+                />
+              </div>
+              <div>
+                <label className="text-xs uppercase tracking-wide text-white/50">
+                  Account Name
+                </label>
+                <Input
+                  value={bankSettings.accountName}
+                  disabled={!canEditShop}
+                  onChange={(e) =>
+                    setBankSettings((prev) => ({
+                      ...prev,
+                      accountName: e.target.value,
+                    }))
+                  }
+                  placeholder="TEN CHU TAI KHOAN"
+                />
+              </div>
+            </div>
+
+            <div>
+              <label className="text-xs uppercase tracking-wide text-white/50">
+                Transfer Note Prefix
+              </label>
+              <Input
+                value={bankSettings.transferNotePrefix}
+                disabled={!canEditShop}
+                onChange={(e) =>
+                  setBankSettings((prev) => ({
+                    ...prev,
+                    transferNotePrefix: e.target.value,
+                  }))
+                }
+                placeholder="PAYMENT"
+              />
+              <p className="mt-1 text-xs text-white/50">
+                This text will be encoded into the QR as the suggested transfer note.
+              </p>
+            </div>
+
+            {canEditShop && (
+              <Button onClick={handleSaveShopSettings} className="w-full">
+                Save Bank QR Settings
               </Button>
             )}
           </div>

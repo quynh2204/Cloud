@@ -2,8 +2,11 @@ import nodemailer from "nodemailer";
 import { google } from "googleapis";
 import { formatMoney } from "./format";
 import { getAccessToken } from "@/services/gmailOAuthService";
-import { isAWSSESConfigured, sendReceiptViaAWSSES } from "@/services/awsSESService";
+import { isAWSSESConfigured, sendReceiptViaAWSSES, sendReceiptViaAWSSESRaw } from "@/services/awsSESService";
 import prisma from "./db";
+import QRCode from "qrcode";
+import { TenantBankConfig, resolveTenantBankBin } from "@/lib/bankQr";
+import { buildEmvCoPayload } from "@/lib/emvco";
 
 export type ReceiptLine = {
   name: string;
@@ -48,7 +51,7 @@ function getSmtpConfig() {
   };
 }
 
-function buildReceiptHtml(payload: ReceiptEmailPayload) {
+function buildReceiptHtml(payload: ReceiptEmailPayload & { qrCid?: string }) {
   const rows = payload.lines
     .map(
       (line) =>
@@ -66,6 +69,7 @@ function buildReceiptHtml(payload: ReceiptEmailPayload) {
       <h2 style="margin: 0 0 8px;">${payload.tenantName} - Receipt</h2>
       <p style="margin: 0 0 12px;">Transaction: ${payload.saleId}</p>
       <p style="margin: 0 0 12px;">Date: ${payload.saleDate.toLocaleString("vi-VN")}</p>
+      ${payload.qrCid ? `<div style="margin:12px 0"><img src="cid:${payload.qrCid}" alt="Payment QR" style="width:200px;height:200px;"/></div>` : ""}
       <table style="width: 100%; border-collapse: collapse; margin-top: 12px;">
         <thead>
           <tr>
@@ -86,7 +90,46 @@ function buildReceiptHtml(payload: ReceiptEmailPayload) {
 }
 
 export async function sendReceiptEmail(payload: ReceiptEmailPayload) {
-  const html = buildReceiptHtml(payload);
+  // If tenant has bankConfig we will create an EMVCo QR image buffer and embed it
+  let qrBuffer: Buffer | undefined;
+  const qrCid = "payment-qr@scarfpos";
+  try {
+    const tenant = await prisma.tenant.findUnique({
+      where: { id: payload.tenantId },
+      select: {
+        name: true,
+        bankName: true,
+        bankBin: true,
+        bankAccountNumber: true,
+        bankAccountName: true,
+        transferNotePrefix: true,
+      },
+    });
+    const bankConfig: TenantBankConfig | null = tenant
+      ? {
+          bankName: tenant.bankName,
+          bankBin: tenant.bankBin,
+          accountNumber: tenant.bankAccountNumber,
+          accountName: tenant.bankAccountName,
+          transferNotePrefix: tenant.transferNotePrefix,
+        }
+      : null;
+    const bankBin = resolveTenantBankBin(bankConfig);
+    if (bankBin && bankConfig?.accountNumber) {
+      const payloadStr = buildEmvCoPayload({
+        bankBin,
+        accountNumber: bankConfig.accountNumber,
+        amount: String(payload.totalCents),
+        referenceLabel: `${bankConfig.transferNotePrefix ?? payload.saleId}-${payload.saleId}`,
+      });
+      qrBuffer = await QRCode.toBuffer(payloadStr, { width: 400 });
+      // we'll pass an extended payload with qrCid to the HTML builder and attach the buffer
+    }
+  } catch (err) {
+    console.warn("Failed to build QR for email", err);
+  }
+  const extendedPayload = qrBuffer ? { ...payload, qrCid } : payload;
+  const html = buildReceiptHtml(extendedPayload as ReceiptEmailPayload & { qrCid?: string });
   const subject = `${payload.tenantName} receipt ${payload.saleId}`;
 
   // 1. Try Gmail OAuth first
@@ -97,27 +140,37 @@ export async function sendReceiptEmail(payload: ReceiptEmailPayload) {
 
     if (emailConfig?.isConnected) {
       console.log(`📧 Sending via Gmail OAuth to: ${payload.to}`);
-      await sendViaGmailAPI(payload, html, emailConfig);
+      await sendViaGmailAPI(payload, html, emailConfig, qrBuffer ? [{ filename: "payment-qr.png", content: qrBuffer, cid: qrCid }] : undefined);
       return;
     }
-  } catch (error) {
+  } catch {
     console.warn("Gmail OAuth not available, trying next method...");
   }
 
   // 2. Try AWS SES (production)
-  if (isAWSSESConfigured()) {
+    if (isAWSSESConfigured()) {
     try {
       console.log(`📧 Sending via AWS SES to: ${payload.to}`);
       const fromEmail = process.env.AWS_SES_FROM_EMAIL || "noreply@scarfpos.com";
-      await sendReceiptViaAWSSES({
-        to: payload.to,
-        from: fromEmail,
-        subject,
-        htmlContent: html,
-      });
+      if (qrBuffer) {
+        await sendReceiptViaAWSSESRaw({
+          to: payload.to,
+          from: fromEmail,
+          subject,
+          htmlContent: html,
+          attachments: [{ filename: "payment-qr.png", content: qrBuffer, cid: qrCid }],
+        });
+      } else {
+        await sendReceiptViaAWSSES({
+          to: payload.to,
+          from: fromEmail,
+          subject,
+          htmlContent: html,
+        });
+      }
       return;
-    } catch (error) {
-      console.warn("AWS SES failed, trying SMTP fallback...");
+    } catch (err) {
+      console.warn("AWS SES failed, trying SMTP fallback...", err);
     }
   }
 
@@ -142,12 +195,19 @@ export async function sendReceiptEmail(payload: ReceiptEmailPayload) {
   }
 
   try {
-    const info = await transporter.sendMail({
+    const mailOptions: any = {
       from: config.from,
       to: payload.to,
       subject,
       html,
-    });
+    };
+    if (qrBuffer) {
+      mailOptions.attachments = [
+        { filename: "payment-qr.png", content: qrBuffer, cid: qrCid },
+      ];
+    }
+
+    const info = await transporter.sendMail(mailOptions);
 
     console.log("✓ Email sent successfully via SMTP");
     console.log(`   To: ${payload.to}`);
@@ -166,7 +226,8 @@ export async function sendReceiptEmail(payload: ReceiptEmailPayload) {
 async function sendViaGmailAPI(
   payload: ReceiptEmailPayload,
   html: string,
-  emailConfig: { refreshToken: string; gmailEmail: string }
+  emailConfig: { refreshToken: string; gmailEmail: string },
+  attachments?: { filename: string; content: Buffer; cid?: string }[]
 ) {
   try {
     const accessToken = await getAccessToken(emailConfig.refreshToken);
@@ -177,30 +238,84 @@ async function sendViaGmailAPI(
     });
     
     const gmail = google.gmail({ version: "v1", auth });
-
-    // Create email message
-    const email = [
-      `From: ${emailConfig.gmailEmail}`,
-      `To: ${payload.to}`,
-      `Subject: ${payload.tenantName} receipt ${payload.saleId}`,
-      "MIME-Version: 1.0",
-      "Content-Type: text/html; charset=UTF-8",
-      "",
-      html,
-    ].join("\r\n");
-
-    const base64Email = Buffer.from(email).toString("base64");
-
+    
+    // If no attachments, send simple HTML as before
+    if (!attachments || attachments.length === 0) {
+      const email = [
+        `From: ${emailConfig.gmailEmail}`,
+        `To: ${payload.to}`,
+        `Subject: ${payload.tenantName} receipt ${payload.saleId}`,
+        "MIME-Version: 1.0",
+        "Content-Type: text/html; charset=UTF-8",
+        "",
+        html,
+      ].join("\r\n");
+      
+      const base64Email = Buffer.from(email).toString("base64");
+      
+      const result = await gmail.users.messages.send({
+        userId: "me",
+        requestBody: {
+          raw: base64Email,
+        },
+      });
+      
+      console.log("✓ Email sent successfully via Gmail API");
+      console.log(`   To: ${payload.to}`);
+      return result;
+    }
+    
+    // Build multipart/related MIME with inline attachments
+    const boundaryOuter = "====outer-boundary===";
+    const boundaryInner = "====inner-boundary===";
+    
+    let parts: string[] = [];
+    parts.push(`From: ${emailConfig.gmailEmail}`);
+    parts.push(`To: ${payload.to}`);
+    parts.push(`Subject: ${payload.tenantName} receipt ${payload.saleId}`);
+    parts.push("MIME-Version: 1.0");
+    parts.push(`Content-Type: multipart/related; boundary="${boundaryOuter}"; type="text/html"`);
+    parts.push("");
+    
+    // inner alternative (only HTML)
+    parts.push(`--${boundaryOuter}`);
+    parts.push(`Content-Type: multipart/alternative; boundary="${boundaryInner}"`);
+    parts.push("");
+    parts.push(`--${boundaryInner}`);
+    parts.push("Content-Type: text/html; charset=\"UTF-8\"");
+    parts.push("");
+    parts.push(html);
+    parts.push("");
+    parts.push(`--${boundaryInner}--`);
+    
+    // Attach inline images
+    for (const att of attachments) {
+      parts.push(`--${boundaryOuter}`);
+      parts.push(`Content-Type: image/png; name="${att.filename}"`);
+      parts.push("Content-Transfer-Encoding: base64");
+      if (att.cid) parts.push(`Content-ID: <${att.cid}>`);
+      parts.push(`Content-Disposition: inline; filename="${att.filename}"`);
+      parts.push("");
+      parts.push(att.content.toString("base64"));
+      parts.push("");
+    }
+    
+    parts.push(`--${boundaryOuter}--`);
+    
+    const raw = parts.join("\r\n");
+    const base64Email = Buffer.from(raw).toString("base64");
+    
     const result = await gmail.users.messages.send({
       userId: "me",
       requestBody: {
         raw: base64Email,
       },
     });
-
+    
     console.log("✓ Email sent successfully via Gmail API");
     console.log(`   To: ${payload.to}`);
     console.log(`   Message ID: ${result.data.id}`);
+    return result;
   } catch (error) {
     const msg = error instanceof Error ? error.message : String(error);
     console.error("✗ Gmail API send failed:", msg);

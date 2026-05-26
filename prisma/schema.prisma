@@ -17,6 +17,11 @@ model Tenant {
   phone          String?
   website        String?
   logo           String? // URL to logo
+  bankName       String?
+  bankBin        String?
+  bankAccountNumber String?
+  bankAccountName String?
+  transferNotePrefix String?
   
   // Security
   twoFactorEnabled Boolean  @default(false)
@@ -86,11 +91,7 @@ model Sale {
   taxAmountCents      Int      @default(0)
   discountCents       Int      @default(0)
   totalCents          Int
-  status              String   @default("COMPLETED")
-  replacedSaleId      String?
-  replacementInvoiceNumber String?
-  replacementTemplateCode  String?
-  replacementSeriesCode    String?
+  status              SaleStatus @default(COMPLETED)
   customerEmail       String?
   customerName        String?
   customerPhone       String?
@@ -102,24 +103,31 @@ model Sale {
   tenant Tenant @relation(fields: [tenantId], references: [id])
   user   User   @relation(fields: [userId], references: [id])
   items  SaleItem[]
-  replacedSale Sale? @relation("SaleReplacements", fields: [replacedSaleId], references: [id])
-  replacements Sale[] @relation("SaleReplacements")
 
   @@index([tenantId])
   @@index([status])
-  @@index([replacedSaleId])
+}
+
+enum SaleStatus {
+  COMPLETED
+  VOIDED
+  REFUNDED
+  REFUND
 }
 
 model SaleItem {
   id            String @id @default(cuid())
   saleId        String
-  productId     String
+  productId     String?
+  productName   String   @default("")
+  productCategory String?
   quantity      Int
+  unitCostCents Int    @default(0)
   unitPriceCents Int
   lineTotalCents Int
 
   sale    Sale    @relation(fields: [saleId], references: [id])
-  product Product @relation(fields: [productId], references: [id])
+  product Product? @relation(fields: [productId], references: [id], onDelete: SetNull)
 
   @@index([saleId])
   @@index([productId])

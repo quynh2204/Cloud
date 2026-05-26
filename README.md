@@ -33,7 +33,8 @@ Open http://localhost:3000
 - Void and refund flows with inventory restoration
 - Transactions filters and receipt details
 - Role-based dashboard analytics
-- Gmail receipt sending on demand
+- Gmail receipt sending on demand (Gmail API OAuth with SMTP fallback)
+- Snapshot-based receipt items (historical receipts remain accurate after product edits/deletes)
 - Dark mode toggle with persistence
 
 ## Tech Stack
@@ -45,7 +46,7 @@ Open http://localhost:3000
 | UI | Tailwind CSS |
 | Database | Prisma + SQLite for dev |
 | Auth | JWT sessions with bcrypt |
-| Email | Gmail SMTP / Nodemailer |
+| Email | Gmail API OAuth + SMTP fallback |
 
 ## Environment
 
@@ -92,3 +93,4 @@ prisma/
 - Owner-only shop settings are enforced on the server.
 - Staff can be granted product add/update permission by the owner.
 - Dashboard data is scoped by role: owners see finance metrics; staff see only their own sales.
+- Payment methods (`cash`, `card`, `transfer`) are currently bookkeeping labels; no external payment gateway is integrated yet.

@@ -1,4 +1,10 @@
 import prisma from "@/lib/db";
+import {
+  ACTIVE_REVENUE_SALE_STATUSES,
+  PAYMENT_METHOD,
+  SALE_STATUS,
+  isValidPaymentMethod,
+} from "@/lib/sales";
 
 export type CreateSaleInput = {
   userId: string;
@@ -20,7 +26,6 @@ export type CreateSaleInput = {
 type VoidSaleInput = {
   saleId: string;
   tenantId: string;
-  status: "VOIDED"; // normalized to VOIDED per spec
   reason?: string;
 };
 
@@ -51,10 +56,26 @@ export const salesService = {
       throw new Error("Sale must have at least one item");
     }
 
+    const paymentMethod = input.paymentMethod || PAYMENT_METHOD.CASH;
+    if (!isValidPaymentMethod(paymentMethod)) {
+      throw new Error("Unsupported payment method");
+    }
+
+    if (
+      paymentMethod !== PAYMENT_METHOD.CASH &&
+      input.amountReceivedCents !== undefined &&
+      input.amountReceivedCents !== null
+    ) {
+      throw new Error("Amount received is only valid for cash payments");
+    }
+
     // Merge duplicate product lines so stock checks and updates are accurate.
     const normalizedItems = Object.values(
       input.items.reduce<Record<string, { productId: string; quantity: number }>>(
         (acc, item) => {
+          if (!Number.isInteger(item.quantity) || item.quantity <= 0) {
+            throw new Error("Item quantity must be a positive integer");
+          }
           const key = item.productId;
           if (!acc[key]) {
             acc[key] = { productId: item.productId, quantity: 0 };
@@ -104,6 +125,13 @@ export const salesService = {
     const taxAmountCents = Math.round((subtotalCents * safeTaxRate) / 100);
     const totalCents = Math.max(0, subtotalCents + taxAmountCents - safeDiscount);
 
+    if (paymentMethod === PAYMENT_METHOD.CASH) {
+      const amountReceived = Math.max(0, input.amountReceivedCents || 0);
+      if (amountReceived < totalCents) {
+        throw new Error("Amount received is less than total");
+      }
+    }
+
     // Create sale and decrement stock atomically.
     const sale = await prisma.$transaction(async (tx) => {
       for (const item of normalizedItems) {
@@ -132,15 +160,26 @@ export const salesService = {
           taxAmountCents,
           discountCents: safeDiscount,
           totalCents,
-          status: "COMPLETED",
+          status: SALE_STATUS.COMPLETED,
           customerEmail: input.customerEmail || null,
           customerName: input.customerName || null,
           customerPhone: input.customerPhone || null,
-          paymentMethod: input.paymentMethod || "cash",
-          amountReceivedCents: input.amountReceivedCents || null,
+          paymentMethod,
+          amountReceivedCents:
+            paymentMethod === PAYMENT_METHOD.CASH
+              ? Math.max(0, input.amountReceivedCents || 0)
+              : null,
           notes: input.notes || null,
           items: {
-            create: saleItems,
+            create: saleItems.map((item) => {
+              const product = products.find((p) => p.id === item.productId)!;
+              return {
+                ...item,
+                productName: product.name,
+                productCategory: product.category,
+                unitCostCents: product.costCents,
+              };
+            }),
           },
         },
       });
@@ -196,7 +235,7 @@ export const salesService = {
     const sales = await prisma.sale.findMany({
       where: {
         tenantId,
-        status: { notIn: ["VOIDED", "REFUNDED"] },
+        status: { in: ACTIVE_REVENUE_SALE_STATUSES },
       },
       include: {
         items: true,
@@ -222,11 +261,14 @@ export const salesService = {
         throw new Error("Sale not found");
       }
 
-      if (sale.status === "VOIDED" || sale.status === "REFUNDED") {
+      if (sale.status === SALE_STATUS.VOIDED || sale.status === SALE_STATUS.REFUNDED) {
         throw new Error("Sale is already voided/refunded");
       }
 
       for (const item of sale.items) {
+        if (!item.productId) {
+          continue;
+        }
         await tx.product.updateMany({
           where: { id: item.productId, tenantId: input.tenantId },
           data: { stockQuantity: { increment: item.quantity } },
@@ -240,7 +282,7 @@ export const salesService = {
       return tx.sale.update({
         where: { id: sale.id },
         data: {
-          status: "VOIDED",
+          status: SALE_STATUS.VOIDED,
           notes,
         },
       });
@@ -252,16 +294,19 @@ export const salesService = {
       const sale = await tx.sale.findFirst({ where: { id: input.saleId, tenantId: input.tenantId }, include: { items: true } });
 
       if (!sale) throw new Error("Sale not found");
-      if (sale.status !== "COMPLETED") throw new Error("Only completed sales can be refunded");
+      if (sale.status !== SALE_STATUS.COMPLETED) throw new Error("Only completed sales can be refunded");
 
       for (const item of sale.items) {
+        if (!item.productId) {
+          continue;
+        }
         await tx.product.updateMany({ where: { id: item.productId, tenantId: input.tenantId }, data: { stockQuantity: { increment: item.quantity } } });
       }
 
       const notes = input.reason ? `${sale.notes ? `${sale.notes}\n` : ""}REFUNDED: ${input.reason}` : sale.notes;
       const refundAmountCents = sale.totalCents;
 
-      await tx.sale.update({ where: { id: sale.id }, data: { status: "REFUNDED", notes } });
+      await tx.sale.update({ where: { id: sale.id }, data: { status: SALE_STATUS.REFUNDED, notes } });
 
       const refund = await tx.sale.create({
         data: {
@@ -272,7 +317,7 @@ export const salesService = {
           taxAmountCents: 0,
           discountCents: 0,
           totalCents: -Math.abs(refundAmountCents),
-          status: "REFUND",
+          status: SALE_STATUS.REFUND,
           customerEmail: sale.customerEmail,
           customerName: sale.customerName,
           customerPhone: sale.customerPhone,

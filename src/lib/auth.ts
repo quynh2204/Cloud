@@ -1,6 +1,7 @@
 import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 import { SignJWT, jwtVerify } from "jose";
+import prisma from "@/lib/db";
 
 const SESSION_COOKIE = "pos_session";
 const SESSION_DURATION = "7d";
@@ -46,6 +47,20 @@ export async function getSession() {
 
   try {
     const { payload } = await jwtVerify(token, getSessionSecret());
+
+    if (payload.userId && payload.tenantId) {
+      const tenant = await prisma.tenant.findUnique({
+        where: { id: String(payload.tenantId) },
+        select: { passwordChangedAt: true },
+      });
+
+      const issuedAt = typeof payload.iat === "number" ? payload.iat : null;
+      const changedAt = tenant?.passwordChangedAt;
+      if (issuedAt && changedAt && issuedAt * 1000 < changedAt.getTime()) {
+        return null;
+      }
+    }
+
     return payload as SessionPayload;
   } catch {
     return null;

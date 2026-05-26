@@ -33,11 +33,7 @@ export const emailService = {
       where: { id: payload.saleId },
       include: {
         tenant: true,
-        items: {
-          include: {
-            product: true,
-          },
-        },
+        items: true,
       },
     });
 
@@ -52,7 +48,7 @@ export const emailService = {
 
     // Build receipt lines
     const lines: ReceiptLine[] = sale.items.map((item) => ({
-      name: item.product.name,
+      name: item.productName,
       quantity: item.quantity,
       unitPriceCents: item.unitPriceCents,
       lineTotalCents: item.lineTotalCents,

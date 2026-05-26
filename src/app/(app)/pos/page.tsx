@@ -1,6 +1,7 @@
 import prisma from "@/lib/db";
 import { requireSession } from "@/lib/auth";
 import { PosClient, type PosProduct } from "@/app/(app)/pos/pos-client";
+import type { TenantBankConfig } from "@/lib/bankQr";
 
 const errorMessages: Record<string, string> = {
   EmptyCart: "Add at least one item before checkout.",
@@ -19,6 +20,17 @@ export default async function PosPage({
     where: { tenantId: session.tenantId },
     orderBy: { createdAt: "desc" },
   });
+  const tenant = await prisma.tenant.findUnique({
+    where: { id: session.tenantId },
+    select: {
+      name: true,
+      bankName: true,
+      bankBin: true,
+      bankAccountNumber: true,
+      bankAccountName: true,
+      transferNotePrefix: true,
+    },
+  });
 
   // Map Prisma products to PosProduct type
   const posProducts: PosProduct[] = products.map((p) => ({
@@ -35,6 +47,15 @@ export default async function PosPage({
   const error = params?.error
     ? errorMessages[params.error] || decodeURIComponent(params.error)
     : undefined;
+  const bankConfig: TenantBankConfig | null = tenant
+    ? {
+        bankName: tenant.bankName,
+        bankBin: tenant.bankBin,
+        accountNumber: tenant.bankAccountNumber,
+        accountName: tenant.bankAccountName,
+        transferNotePrefix: tenant.transferNotePrefix,
+      }
+    : null;
 
   return (
     <div className="space-y-6">
@@ -45,7 +66,12 @@ export default async function PosPage({
           Add scarves to the cart and send receipts instantly.
         </p>
       </div>
-      <PosClient products={posProducts} error={error} />
+      <PosClient
+        products={posProducts}
+        error={error}
+        tenantName={tenant?.name ?? "Tenant"}
+        bankConfig={bankConfig}
+      />
     </div>
   );
 }

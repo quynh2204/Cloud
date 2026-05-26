@@ -5,6 +5,7 @@ import { formatMoney } from "@/lib/format";
 import { getCurrentUserAccess } from "@/lib/access";
 import { Badge } from "@/components/ui/Badge";
 import { Button } from "@/components/ui/Button";
+import { ACTIVE_REVENUE_SALE_STATUSES } from "@/lib/sales";
 
 export default async function DashboardPage() {
   const session = await requireSession();
@@ -29,28 +30,28 @@ export default async function DashboardPage() {
         where: {
           ...visibleSalesWhere,
           createdAt: { gte: startOfDay },
-          status: { notIn: ["VOIDED", "REFUNDED"] },
+          status: { in: ACTIVE_REVENUE_SALE_STATUSES },
         },
       }),
       prisma.sale.count({
         where: {
           ...visibleSalesWhere,
           createdAt: { gte: startOfWeek },
-          status: { notIn: ["VOIDED", "REFUNDED"] },
+          status: { in: ACTIVE_REVENUE_SALE_STATUSES },
         },
       }),
       prisma.sale.aggregate({
         where: {
           ...visibleSalesWhere,
           createdAt: { gte: startOfDay },
-          status: { notIn: ["VOIDED", "REFUNDED"] },
+          status: { in: ACTIVE_REVENUE_SALE_STATUSES },
         },
         _sum: { totalCents: true },
       }),
       prisma.sale.findMany({
         where: {
           ...visibleSalesWhere,
-          status: { notIn: ["VOIDED", "REFUNDED"] },
+          status: { in: ACTIVE_REVENUE_SALE_STATUSES },
         },
         orderBy: { createdAt: "desc" },
         take: 5,
@@ -59,13 +60,12 @@ export default async function DashboardPage() {
         where: {
           sale: {
             ...visibleSalesWhere,
-            status: { notIn: ["VOIDED", "REFUNDED"] },
+            status: { in: ACTIVE_REVENUE_SALE_STATUSES },
             createdAt: { gte: monthWindowStart },
           },
         },
         include: {
           sale: { select: { createdAt: true } },
-          product: { select: { name: true, category: true, costCents: true } },
         },
       }),
     ]);
@@ -111,23 +111,24 @@ export default async function DashboardPage() {
   let cogsMonth = 0;
 
   for (const item of saleItems) {
-    const existingProduct = productAgg.get(item.productId) || {
-      name: item.product.name,
+    const productKey = item.productId || `snapshot:${item.productName}`;
+    const existingProduct = productAgg.get(productKey) || {
+      name: item.productName,
       revenue: 0,
       quantity: 0,
     };
     existingProduct.revenue += item.lineTotalCents;
     existingProduct.quantity += item.quantity;
-    productAgg.set(item.productId, existingProduct);
+    productAgg.set(productKey, existingProduct);
 
-    const category = item.product.category || "Uncategorized";
+    const category = item.productCategory || "Uncategorized";
     categoryAgg.set(category, (categoryAgg.get(category) || 0) + item.lineTotalCents);
 
     if (item.sale.createdAt >= startOfDay) {
-      cogsToday += item.quantity * item.product.costCents;
+      cogsToday += item.quantity * item.unitCostCents;
     }
 
-    cogsMonth += item.quantity * item.product.costCents;
+    cogsMonth += item.quantity * item.unitCostCents;
   }
 
   const topProducts = Array.from(productAgg.values())
